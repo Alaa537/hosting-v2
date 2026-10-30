@@ -115,10 +115,6 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
             'count': files.length,
             'files': files.map((f) => '${f['name']} (${f['is_file'] ? fSize(f['size']) : 'مجلد'})').toList(),
           };
-        case 'get_bot_logs':
-          final lines = (call.args['lines'] as num?)?.toInt() ?? 50;
-          final logs = await api.botLogs('app.py', lines: lines.clamp(1, 100));
-          return {'lines': logs['lines'] ?? []};
         case 'get_app_status':
           final st = await api.appStatus();
           return {

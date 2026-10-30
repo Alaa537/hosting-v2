@@ -42,13 +42,6 @@ class GeminiService {
         }),
       ),
       FunctionDeclaration(
-        'get_bot_logs',
-        'اقرأ آخر سطور من سجل تشغيل البوت (Logs)',
-        Schema.object(properties: {
-          'lines': Schema.integer(description: 'عدد السطور، افتراضي 50'),
-        }),
-      ),
-      FunctionDeclaration(
         'get_app_status',
         'اعرف حالة السيرفر والبوت الحالية (يعمل / متوقف)',
         Schema.object(properties: {}),
