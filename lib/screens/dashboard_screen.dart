@@ -54,6 +54,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _checkServerFull(ServerResources r) {
+    final cpu = r.cpu ?? 0;
+    final mem = r.memPercent ?? 0;
+    final disk = r.diskPercent ?? 0;
+
+    final isFull = cpu >= 99 || mem >= 99 || disk >= 99;
+
+    if (isFull && !_fullDialogShown) {
+      _fullDialogShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showFullWarning(cpu, mem, disk);
+      });
+    } else if (!isFull && _fullDialogShown) {
+      _fullDialogShown = false;
+    }
+  }
+
+  void _showFullWarning(double cpu, double mem, double disk) {
+    final issues = <String>[];
+    if (cpu >= 99) issues.add('🔴 CPU وصل للحد الأقصى: ${cpu.toStringAsFixed(1)}%');
+    if (mem >= 99) issues.add('🟠 RAM وصلت للحد الأقصى: ${mem.toStringAsFixed(1)}%');
+    if (disk >= 99) issues.add('🟡 Disk وصل للحد الأقصى: ${disk.toStringAsFixed(1)}%');
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: C.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        icon: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: C.danger.withValues(alpha: .15),
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: C.danger.withValues(alpha: .4), blurRadius: 20)],
+          ),
+          child: const Icon(Icons.warning_amber_rounded, color: C.danger, size: 36),
+        ),
+        title: const Text('⚠️ السيرفر وصل للحد الأقصى',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('المعالج أو الذاكرة أو التخزين وصل للحد الأقصى.',
+                style: TextStyle(color: C.muted, fontSize: 13, height: 1.6)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: C.danger.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: C.danger.withValues(alpha: .3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: issues.map((i) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Text(i, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                )).toList(),
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: C.danger,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('فهمت', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
