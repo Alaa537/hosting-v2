@@ -35,9 +35,9 @@ class SecurityService {
   static const _channel = MethodChannel('hosting/security');
 
   static const _sources = [
-    'https://raw.githubusercontent.com/Alaa537/hosting-sec/main/signature.json',
-    'https://cdn.jsdelivr.net/gh/Alaa537/hosting-sec@main/signature.json',
-    'https://cdn.statically.io/gh/Alaa537/hosting-sec/main/signature.json',
+    'https://raw.githubusercontent.com/Alaa537/hosting-sec-v2/main/signature.json',
+    'https://cdn.jsdelivr.net/gh/Alaa537/hosting-sec-v2@main/signature.json',
+    'https://cdn.statically.io/gh/Alaa537/hosting-sec-v2/main/signature.json',
   ];
 
   static Future<T?> _native<T>(String method) async {
