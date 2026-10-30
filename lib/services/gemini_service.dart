@@ -3,13 +3,16 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 class GeminiService {
   final String _apiKey;
 
+  // الموديلات بالترتيب (جوجل بتنصح بـ 3.5-flash-lite حالياً)
   static const _models = [
-    'gemini-2.5-flash-lite',
-    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash-lite',  // الموديل الأساسي
+    'gemini-3.1-flash-lite',  // احتياطي
+    'gemini-3.8-flash',       // احتياطي
   ];
 
-  late final GenerativeModel _model;
-  late final ChatSession _chat;
+  ChatSession? _chat;
+  String? _activeModelName;
+  final List<Content> _history = [];
 
   static const _systemPrompt = '''
 أنت BIMEX AI، مساعد ذكي داخل تطبيق HOST PANEL.
@@ -19,17 +22,9 @@ class GeminiService {
 أجب بالعربية الفصحى المبسطة وبأسلوب عملي ومختصر.
 ''';
 
-  GeminiService({required String apiKey}) : _apiKey = apiKey {
-    _model = GenerativeModel(
-      model: _models.first,
-      apiKey: _apiKey,
-      systemInstruction: Content.system(_systemPrompt),
-      generationConfig: GenerationConfig(temperature: 0.4, maxOutputTokens: 2048),
-      tools: [_buildTools()],
-    );
-    _chat = _model.startChat();
-  }
+  GeminiService({required String apiKey}) : _apiKey = apiKey;
 
+  // دالة إنشاء الأدوات
   Tool _buildTools() {
     return Tool(functionDeclarations: [
       FunctionDeclaration(
@@ -54,7 +49,64 @@ class GeminiService {
     ]);
   }
 
-  Future<GenerateContentResponse> sendMessage(String text) async => await _chat.sendMessage(Content.text(text));
-  Future<GenerateContentResponse> sendFunctionResults(List<Part> parts) async => await _chat.sendMessage(Content.multi(parts));
-  void reset() => _chat = _model.startChat();
+  // دالة الإرسال مع خاصية الـ Fallback (التجربة التلقائية)
+  Future<GenerateContentResponse> sendMessage(String text) async {
+    final content = Content.text(text);
+
+    // 1. جرّب الموديل النشط حالياً
+    if (_chat != null) {
+      try {
+        final response = await _chat!.sendMessage(content).timeout(const Duration(seconds: 30));
+        _history.add(content);
+        _history.add(Content.text(response.text ?? ''));
+        return response;
+      } catch (_) {
+        // لو فشل، بنمسح الشات عشان نجرب موديل جديد
+        _chat = null;
+        _activeModelName = null;
+      }
+    }
+
+    // 2. لو مفيش موديل نشط، هنلف على القائمة
+    final errors = <String>[];
+    for (final modelName in _models) {
+      try {
+        final model = GenerativeModel(
+          model: modelName,
+          apiKey: _apiKey,
+          systemInstruction: Content.system(_systemPrompt),
+          generationConfig: GenerationConfig(temperature: 0.4, maxOutputTokens: 2048),
+          tools: [_buildTools()],
+        );
+
+        final chat = _history.isEmpty ? model.startChat() : model.startChat(history: _history);
+        final response = await chat.sendMessage(content).timeout(const Duration(seconds: 30));
+
+        _chat = chat;
+        _activeModelName = modelName;
+        _history.add(content);
+        _history.add(Content.text(response.text ?? ''));
+        return response;
+      } catch (e) {
+        errors.add('$modelName: ${e.toString().split('\n').first}');
+      }
+    }
+
+    throw Exception('كل الموديلات فشلت:\n${errors.join('\n')}');
+  }
+
+  Future<GenerateContentResponse> sendFunctionResults(List<Part> parts) async {
+    if (_chat == null) throw Exception('No active chat session');
+    try {
+      return await _chat!.sendMessage(Content.multi(parts));
+    } catch (e) {
+      throw Exception('فشل إرسال نتيجة الأداة: $e');
+    }
+  }
+
+  void reset() {
+    _history.clear();
+    _chat = null;
+    _activeModelName = null;
+  }
 }
