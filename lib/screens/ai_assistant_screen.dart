@@ -41,7 +41,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     }
     
     _messages.add(_Message(
-      text: 'مرحباً بك في المساعد الذكي 🤖\n\n'
+      text: 'مرحباً بك في BIMEX AI 🤖\n\n'
           'أنا هنا لمساعدتك في:\n'
           '• إدارة ملفاتك وسيرفرك\n'
           '• فهم أكواد Python\n'
@@ -127,7 +127,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
             ),
             const SizedBox(width: 12),
             const Text(
-              'المساعد الذكي',
+              'BIMEX AI',
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
           ],

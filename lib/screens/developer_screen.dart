@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../utils/constants.dart';
@@ -12,223 +11,178 @@ class DeveloperScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: C.bg,
       appBar: AppBar(
-        title: const Text('معلومات المطور'),
+        title: const Text('Developer'),
         backgroundColor: Colors.transparent,
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            // البطاقة الرئيسية للمطور
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    C.primary.withValues(alpha: .15),
-                    C.accent.withValues(alpha: .15),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: C.primary.withValues(alpha: .4)),
-                boxShadow: [
-                  BoxShadow(
-                    color: C.primary.withValues(alpha: .2),
-                    blurRadius: 30,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 100, height: 100,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [C.primary, C.accent],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: C.primary.withValues(alpha: .5),
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'AR',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ).animate().scale(duration: 600.ms, curve: Curves.elasticOut),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '𝑫𝑬𝑽 𝑨𝒍𝒂𝒂 𝑹𝒂𝒇𝒆𝒆𝒌',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'المطور علاء رفيق',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: C.muted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ).animate().fadeIn(duration: 600.ms).slideY(begin: .2, end: 0),
-
-            const SizedBox(height: 24),
-
-            // نبذة
-            _buildInfoCard(
-              title: 'نبذة',
-              icon: Icons.person_outline,
-              content: 'خبير في قسم بناء التطبيقات ومجالات متعددة.',
+            _hero(),
+            const SizedBox(height: 28),
+            _devCard(
+              name: 'Alaa Rafeek',
+              role: 'Founder · Lead Developer',
+              description: 'Expert in app development, reverse engineering, and multiple technologies.',
+              skills: const ['Flutter', 'Reverse Engineering', 'Python', 'PHP', 'Java', 'Kotlin'],
+              telegram: 'AR_Bou',
+              initial: 'A',
+              accent: C.primary,
+              delay: 100,
             ),
 
-            const SizedBox(height: 16),
-
-            // المهارات
-            _buildInfoCard(
-              title: 'المهارات',
-              icon: Icons.code,
-              content: 'Flutter & Reverse Engineering & Python & PHP & Java & Kotlin',
-            ),
-
-            const SizedBox(height: 16),
-
-            // وسائل التواصل
-            GestureDetector(
-              onTap: () async {
-                final url = Uri.parse('https://t.me/AR_Bou');
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF29B6F6), Color(0xFF0288D1)],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF29B6F6).withValues(alpha: .4),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.telegram, color: Colors.white, size: 32),
-                    SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'تواصل معي',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '@AR_Bou',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 15,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
-                  ],
-                ),
-              ),
-            ).animate().fadeIn(duration: 600.ms, delay: 300.ms),
-
-            const SizedBox(height: 24),
-            
-            // حقوق النشر
-            Center(
-              child: Text(
-                'HOST PANEL © ${DateTime.now().year}\nAll rights reserved',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: C.muted.withValues(alpha: .5),
-                  fontSize: 11,
-                  height: 1.5,
-                ),
-              ),
-            ),
+            const SizedBox(height: 32),
+            _footer(),
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInfoCard({
-    required String title,
-    required IconData icon,
-    required String content,
-  }) {
+  Widget _hero() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: C.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: C.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: C.primary, size: 20),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            content,
-            style: const TextStyle(
-              fontSize: 14,
-              color: C.muted,
-              height: 1.6,
-            ),
-          ),
+        gradient: LinearGradient(
+          colors: [C.primary.withValues(alpha: .2), C.accent.withValues(alpha: .2)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: C.primary.withValues(alpha: .4)),
+        boxShadow: [
+          BoxShadow(color: C.primary.withValues(alpha: .25), blurRadius: 30, spreadRadius: 2),
         ],
       ),
-    ).animate().fadeIn(duration: 600.ms, delay: 150.ms);
+      child: Column(children: [
+        ShaderMask(
+          shaderCallback: (r) => const LinearGradient(colors: [C.primary, C.accent]).createShader(r),
+          child: const Text('HOST PANEL',
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 3, color: Colors.white)),
+        ),
+        const SizedBox(height: 8),
+        const Text('Built with passion by Alaa Rafeek',
+            style: TextStyle(color: C.muted, fontSize: 12.5, letterSpacing: .5)),
+      ]),
+    ).animate().fadeIn(duration: 600.ms).slideY(begin: .2, end: 0);
+  }
+
+  Widget _devCard({
+    required String name,
+    required String role,
+    required String description,
+    required List<String> skills,
+    required String telegram,
+    required String initial,
+    required Color accent,
+    required int delay,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: C.surface.withValues(alpha: .85),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: .35), width: 1.2),
+        boxShadow: [BoxShadow(color: accent.withValues(alpha: .2), blurRadius: 24, spreadRadius: 1)],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [accent.withValues(alpha: .2), accent.withValues(alpha: .05)]),
+            ),
+            child: Row(children: [
+              Container(
+                width: 68, height: 68,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(colors: [accent, C.accent]),
+                  boxShadow: [BoxShadow(color: accent.withValues(alpha: .5), blurRadius: 16)],
+                ),
+                child: Center(
+                  child: Text(initial,
+                      style: const TextStyle(color: Colors.black, fontSize: 26, fontWeight: FontWeight.w900)),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text(role, style: TextStyle(color: accent, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: .5)),
+                ]),
+              ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(description, style: const TextStyle(color: C.muted, fontSize: 13, height: 1.6)),
+              const SizedBox(height: 16),
+              Wrap(spacing: 6, runSpacing: 6, children: skills.map((s) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: accent.withValues(alpha: .3)),
+                ),
+                child: Text(s, style: TextStyle(color: accent, fontSize: 10.5, fontWeight: FontWeight.w700)),
+              )).toList()),
+              const SizedBox(height: 18),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () async {
+                    final url = Uri.parse('https://t.me/$telegram');
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [Color(0xFF29B6F6), Color(0xFF0288D1)]),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [BoxShadow(color: const Color(0xFF29B6F6).withValues(alpha: .35), blurRadius: 12)],
+                    ),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      const Icon(Icons.telegram, color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      Text('@$telegram', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                    ]),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    ).animate().fadeIn(duration: 600.ms, delay: delay.ms).slideX(begin: .1, end: 0);
+  }
+
+  Widget _footer() {
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: C.surface.withValues(alpha: .5),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: C.border),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.favorite, color: C.accent, size: 14),
+          const SizedBox(width: 8),
+          Text('Crafted with precision and care',
+              style: TextStyle(color: C.muted.withValues(alpha: .8), fontSize: 12)),
+        ]),
+      ),
+      const SizedBox(height: 16),
+      Text('HOST PANEL © ${DateTime.now().year}\nAll rights reserved',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: C.muted.withValues(alpha: .5), fontSize: 11, height: 1.5)),
+    ]);
   }
 }

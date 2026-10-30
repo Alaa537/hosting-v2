@@ -24,6 +24,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   AppStatus? _app;
   String? _err;
   bool _loading = true;
+  bool _fullDialogShown = false;
 
   @override
   void initState() {
@@ -46,6 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _err = null;
         _loading = false;
       });
+      _checkServerFull(r[0] as ServerResources);
     } catch (e) {
       if (!mounted) return;
       setState(() { _err = friendlyError(e); _loading = false; });

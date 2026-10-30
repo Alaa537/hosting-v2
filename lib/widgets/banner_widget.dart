@@ -7,7 +7,6 @@ import '../services/audio_service.dart';
 class BannerStrip extends StatefulWidget {
   final BannerInfo banner;
   final VoidCallback? onDismiss;
-
   const BannerStrip({super.key, required this.banner, this.onDismiss});
 
   @override
@@ -18,7 +17,6 @@ class _BannerStripState extends State<BannerStrip> {
   @override
   void initState() {
     super.initState();
-    // تشغيل صوت الإشعار عند ظهور البانر
     AudioService.playNotification();
   }
 
@@ -46,72 +44,70 @@ class _BannerStripState extends State<BannerStrip> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
       decoration: BoxDecoration(
-        // خلفية داكنة + حدود متوهجة لتبدو فخمة وليست رمادية
-        color: C.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _color.withValues(alpha: .8), width: 1.2),
+        gradient: LinearGradient(
+          colors: [
+            _color.withValues(alpha: .18),
+            C.surfaceHi.withValues(alpha: .95),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _color.withValues(alpha: .6), width: 1.2),
         boxShadow: [
-          BoxShadow(
-            color: _color.withValues(alpha: .25),
-            blurRadius: 16,
-            spreadRadius: 1,
-          ),
+          BoxShadow(color: _color.withValues(alpha: .25), blurRadius: 18, spreadRadius: 1),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                _color.withValues(alpha: .15),
-                Colors.transparent,
-              ],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: _color.withValues(alpha: .2),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [BoxShadow(color: _color.withValues(alpha: .35), blurRadius: 10)],
+              ),
+              child: Icon(_icon, color: _color, size: 20),
             ),
-          ),
-          child: Row(
-            children: [
-              Icon(_icon, color: _color, size: 22),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  widget.banner.text,
-                  style: TextStyle(
-                    color: _color,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.4,
-                  ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                widget.banner.text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.5,
                 ),
               ),
-              if (widget.banner.actionUrl != null)
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  iconSize: 20,
-                  icon: Icon(Icons.open_in_new, color: _color),
-                  onPressed: () async {
-                    try {
-                      await launchUrl(Uri.parse(widget.banner.actionUrl!),
-                          mode: LaunchMode.externalApplication);
-                    } catch (_) {}
-                  },
-                ),
-              if (widget.onDismiss != null)
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  iconSize: 18,
-                  icon: const Icon(Icons.close, color: C.muted),
-                  onPressed: widget.onDismiss,
-                ),
-            ],
-          ),
+            ),
+            if (widget.banner.actionUrl != null)
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                iconSize: 18,
+                icon: Icon(Icons.open_in_new, color: _color),
+                onPressed: () async {
+                  try {
+                    await launchUrl(Uri.parse(widget.banner.actionUrl!),
+                        mode: LaunchMode.externalApplication);
+                  } catch (_) {}
+                },
+              ),
+            if (widget.onDismiss != null)
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                iconSize: 16,
+                icon: const Icon(Icons.close, color: C.muted),
+                onPressed: widget.onDismiss,
+              ),
+          ]),
         ),
       ),
     );

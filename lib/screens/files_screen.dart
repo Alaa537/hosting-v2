@@ -567,14 +567,15 @@ class _FilesScreenState extends State<FilesScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         gradient: selected
-            ? LinearGradient(colors: [
-                color.withValues(alpha: .15),
-                color.withValues(alpha: .05),
-              ])
-            : LinearGradient(colors: [
-                C.surface.withValues(alpha: .85),
-                C.surfaceHi.withValues(alpha: .65),
-              ]),
+            ? LinearGradient(
+                colors: [color.withValues(alpha: .25), color.withValues(alpha: .08)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight)
+            : LinearGradient(
+                colors: [
+                  C.surface.withValues(alpha: .95),
+                  C.primary.withValues(alpha: .04),
+                ],
+                begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: selected ? color.withValues(alpha: .7) : C.border,
@@ -610,12 +611,16 @@ class _FilesScreenState extends State<FilesScreen> {
                   Container(
                     width: 44, height: 44,
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: .15),
+                      gradient: LinearGradient(
+                        colors: [color.withValues(alpha: .25), color.withValues(alpha: .08)],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: color.withValues(alpha: .4)),
                       boxShadow: [
                         BoxShadow(
-                          color: color.withValues(alpha: .3),
-                          blurRadius: 12,
+                          color: color.withValues(alpha: .4),
+                          blurRadius: 14,
+                          spreadRadius: 1,
                         ),
                       ],
                     ),
