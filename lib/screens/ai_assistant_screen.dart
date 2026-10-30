@@ -2,9 +2,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/gemini_service.dart';
-import '../utils/api_key_manager.dart';
 import '../utils/constants.dart';
+import '../utils/error_utils.dart';
+import '../utils/formatters.dart';
+import '../utils/api_key_manager.dart';
 
 class AIAssistantScreen extends StatefulWidget {
   const AIAssistantScreen({super.key});
@@ -42,11 +46,9 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     
     _messages.add(_Message(
       text: 'مرحباً بك في BIMEX AI 🤖\n\n'
-          'أنا هنا لمساعدتك في:\n'
-          '• إدارة ملفاتك وسيرفرك\n'
-          '• فهم أكواد Python\n'
-          '• حل أي مشكلة تقنية\n\n'
-          'كيف يمكنني مساعدتك اليوم؟',
+          'يمكنني الآن قراءة ملفاتك وجلب السجلات (Logs) مباشرة. جرب أن تقول:\n'
+          '• "اعرض لي ملفات المجلد الرئيسي"\n'
+          '• "جيب لي آخر 20 سطر من اللوج"',
       isUser: false,
     ));
   }
@@ -71,7 +73,19 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     _scrollToBottom();
 
     try {
-      final reply = await _gemini!.sendMessage(text);
+      var response = await _gemini!.sendMessage(text);
+
+      // حلقة تنفيذ الأوامر (Function Calling Loop)
+      while (response.functionCalls.isNotEmpty) {
+        final parts = <Part>[];
+        for (final call in response.functionCalls) {
+          final result = await _executeFunction(call);
+          parts.add(FunctionResponse(call.name, result));
+        }
+        response = await _gemini!.sendFunctionResults(parts);
+      }
+
+      final reply = response.text ?? 'لم أفهم طلبك.';
       if (!mounted) return;
       setState(() {
         _messages.add(_Message(text: reply, isUser: false));
@@ -82,11 +96,41 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
       if (!mounted) return;
       setState(() {
         _messages.add(_Message(
-          text: '❌ حدث خطأ: ${e.toString()}',
+          text: '❌ حدث خطأ: ${friendlyError(e)}',
           isUser: false,
         ));
         _isLoading = false;
       });
+    }
+  }
+
+  Future<Map<String, Object?>> _executeFunction(FunctionCall call) async {
+    final api = context.read<AuthProvider>().api!;
+    try {
+      switch (call.name) {
+        case 'list_files':
+          final dir = (call.args['directory'] as String?) ?? '/';
+          final files = await api.listFiles(directory: dir);
+          return {
+            'count': files.length,
+            'files': files.map((f) => '${f['name']} (${f['is_file'] ? fSize(f['size']) : 'مجلد'})').toList(),
+          };
+        case 'get_bot_logs':
+          final lines = (call.args['lines'] as num?)?.toInt() ?? 50;
+          final logs = await api.botLogs('app.py', lines: lines.clamp(1, 100));
+          return {'lines': logs['lines'] ?? []};
+        case 'get_app_status':
+          final st = await api.appStatus();
+          return {
+            'state': st.state,
+            'uptime': fTime(st.uptimeSeconds),
+            'has_app': st.app.exists,
+          };
+        default:
+          return {'error': 'unknown_function'};
+      }
+    } catch (e) {
+      return {'error': friendlyError(e)};
     }
   }
 
@@ -116,42 +160,29 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
               decoration: BoxDecoration(
                 gradient: const LinearGradient(colors: [C.primary, C.accent]),
                 borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: C.primary.withValues(alpha: .4),
-                    blurRadius: 10,
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 10)],
               ),
               child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16),
             ),
             const SizedBox(width: 12),
-            const Text(
-              'BIMEX AI',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
+            const Text('BIMEX AI', style: TextStyle(fontWeight: FontWeight.w800)),
           ],
         ),
       ),
       body: _initError != null
-          ? _buildError()
+          ? Center(child: Text(_initError!, style: const TextStyle(color: C.danger)))
           : Stack(
               children: [
-                // الخلفية الديناميكية
                 AnimatedBuilder(
                   animation: _bgCtrl,
                   builder: (_, __) {
                     final t = _bgCtrl.value * 2 * math.pi;
-                    return Stack(
-                      children: [
-                        _buildBlob(0.3 + 0.2 * math.cos(t), 0.2 + 0.1 * math.sin(t), 300, C.primary.withValues(alpha: .1)),
-                        _buildBlob(0.7 + 0.2 * math.sin(t), 0.8 + 0.1 * math.cos(t), 280, C.accent.withValues(alpha: .1)),
-                      ],
-                    );
+                    return Stack(children: [
+                      _buildBlob(0.3 + 0.2 * math.cos(t), 0.2 + 0.1 * math.sin(t), 300, C.primary.withValues(alpha: .1)),
+                      _buildBlob(0.7 + 0.2 * math.sin(t), 0.8 + 0.1 * math.cos(t), 280, C.accent.withValues(alpha: .1)),
+                    ]);
                   },
                 ),
-                
-                // المحادثة
                 SafeArea(
                   child: Column(
                     children: [
@@ -170,47 +201,10 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
       left: MediaQuery.of(context).size.width * cx - r,
       top: MediaQuery.of(context).size.height * cy - r,
       child: Container(
-        width: r * 2,
-        height: r * 2,
+        width: r * 2, height: r * 2,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color, color.withValues(alpha: .05), Colors.transparent],
-            stops: const [0, .5, 1],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: C.danger.withValues(alpha: .1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: C.danger.withValues(alpha: .4)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.key_off, color: C.danger, size: 48),
-              const SizedBox(height: 16),
-              const Text(
-                'مفتاح API غير مضبوط',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _initError ?? '',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: C.muted, fontSize: 12),
-              ),
-            ],
-          ),
+          gradient: RadialGradient(colors: [color, color.withValues(alpha: .05), Colors.transparent], stops: const [0, .5, 1]),
         ),
       ),
     );
@@ -242,9 +236,6 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
               decoration: BoxDecoration(
                 gradient: const LinearGradient(colors: [C.primary, C.accent]),
                 borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(color: C.primary.withValues(alpha: .3), blurRadius: 8),
-                ],
               ),
               child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16),
             ),
@@ -254,37 +245,16 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: BoxDecoration(
-                color: isUser 
-                    ? C.primary.withValues(alpha: .15) 
-                    : C.surface.withValues(alpha: .85),
+                color: isUser ? C.primary.withValues(alpha: .15) : C.surface.withValues(alpha: .85),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(20),
                   topRight: const Radius.circular(20),
                   bottomLeft: Radius.circular(isUser ? 20 : 4),
                   bottomRight: Radius.circular(isUser ? 4 : 20),
                 ),
-                border: Border.all(
-                  color: isUser 
-                      ? C.primary.withValues(alpha: .4) 
-                      : C.border,
-                  width: 1.2,
-                ),
-                boxShadow: isUser ? [] : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: .2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: Border.all(color: isUser ? C.primary.withValues(alpha: .4) : C.border),
               ),
-              child: SelectableText(
-                msg.text,
-                style: TextStyle(
-                  color: isUser ? C.primary : Colors.white,
-                  fontSize: 14.5,
-                  height: 1.6,
-                ),
-              ),
+              child: SelectableText(msg.text, style: TextStyle(color: isUser ? C.primary : Colors.white, fontSize: 14.5, height: 1.6)),
             ),
           ),
           if (isUser) ...[
@@ -325,10 +295,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: C.border),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [_dot(0), _dot(150), _dot(300)],
-            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [_dot(0), _dot(150), _dot(300)]),
           ),
         ],
       ),
@@ -337,20 +304,14 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
 
   Widget _dot(int delay) => Container(
     margin: const EdgeInsets.symmetric(horizontal: 4),
-    width: 8,
-    height: 8,
+    width: 8, height: 8,
     decoration: const BoxDecoration(color: C.primary, shape: BoxShape.circle),
-  ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleY(
-    begin: .6, end: 1.4, duration: 500.ms, delay: delay.ms, curve: Curves.easeInOut,
-  );
+  ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleY(begin: .6, end: 1.4, duration: 500.ms, delay: delay.ms);
 
   Widget _buildInput() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0D0D1A),
-        border: Border(top: BorderSide(color: C.border)),
-      ),
+      decoration: const BoxDecoration(color: Color(0xFF0D0D1A), border: Border(top: BorderSide(color: C.border))),
       child: Row(
         children: [
           Expanded(
@@ -367,12 +328,12 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
                 style: const TextStyle(fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'اكتب رسالتك هنا...',
-                  hintStyle: const TextStyle(color: C.muted),
+                decoration: const InputDecoration(
+                  hintText: 'اطلب من BIMEX AI قراءة ملف أو لوج...',
+                  hintStyle: TextStyle(color: C.muted),
                   isDense: true,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 ),
               ),
             ),
@@ -382,9 +343,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [C.primary, C.accent]),
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 12),
-              ],
+              boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 12)],
             ),
             child: IconButton(
               onPressed: _isLoading ? null : _send,

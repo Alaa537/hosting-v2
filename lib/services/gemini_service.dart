@@ -3,91 +3,68 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 class GeminiService {
   final String _apiKey;
 
-  // قائمة الموديلات (بالترتيب — يحاول الأول فالثاني...)
-    static const _models = [
-    'gemini-3.5-flash-lite',  // الأسرع والأكثر استقراراً
-    'gemini-3.1-flash-lite',  // احتياطي
-    'gemini-2.5-flash-lite',  // احتياطي
-    'gemini-3.8-flash',       // احتياطي أخير (قد يكون بطيئاً)
+  // الموديلات السريعة اللي اختبرناها
+  static const _models = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
   ];
 
-  ChatSession? _chat;
-  String? _activeModelName;
-  final List<Content> _history = [];
+  late final GenerativeModel _model;
+  late final ChatSession _chat;
 
-  static const _systemPrompt =
-      'أنت مساعد ذكي داخل تطبيق HOST PANEL. '
-      'تساعد المستخدم في إدارة السيرفر، أكواد Python، البوتات، أو أي استفسار تقني. '
-      'أجب بالعربية الفصحى المبسطة وبأسلوب عملي ومختصر.';
+  static const _systemPrompt = '''
+أنت BIMEX AI، مساعد ذكي داخل تطبيق HOST PANEL.
+لديك أدوات (Tools) للوصول لملفات السيرفر واللوجات. 
+استخدمها دائماً عندما يطلب منك المستخدم رؤية ملفات أو لوجات أو حالة السيرفر.
+لا تعتذر وتقل لا أستطيع، بل استخدم الأدوات المتاحة لك.
+أجب بالعربية الفصحى المبسطة وبأسلوب عملي ومختصر.
+''';
 
-  GeminiService({required String apiKey}) : _apiKey = apiKey;
+  GeminiService({required String apiKey}) : _apiKey = apiKey {
+    _model = GenerativeModel(
+      model: _models.first,
+      apiKey: _apiKey,
+      systemInstruction: Content.system(_systemPrompt),
+      generationConfig: GenerationConfig(temperature: 0.4, maxOutputTokens: 2048),
+      tools: [_buildTools()],
+    );
+    _chat = _model.startChat();
+  }
 
-  Future<String> sendMessage(String message) async {
-    final content = Content.text(message);
+  Tool _buildTools() {
+    return Tool(functionDeclarations: [
+      FunctionDeclaration(
+        'list_files',
+        'اعرض الملفات في مجلد معين',
+        Schema.object(properties: {
+          'directory': Schema.string(description: 'مسار المجلد، افتراضي /'),
+        }),
+      ),
+      FunctionDeclaration(
+        'get_bot_logs',
+        'اقرأ آخر سطور من سجل تشغيل البوت (Logs)',
+        Schema.object(properties: {
+          'lines': Schema.integer(description: 'عدد السطور، افتراضي 50'),
+        }),
+      ),
+      FunctionDeclaration(
+        'get_app_status',
+        'اعرف حالة السيرفر والبوت الحالية (يعمل / متوقف)',
+        Schema.object(properties: {}),
+      ),
+    ]);
+  }
 
-    // 1) جرّب الموديل النشط (لو موجود)
-    if (_chat != null) {
-      try {
-        final response = await _chat!
-            .sendMessage(content)
-            .timeout(const Duration(seconds: 60));
-        final reply = response.text ?? 'لم أفهم طلبك.';
-        _history.add(content);
-        _history.add(Content.text(reply));
-        return reply;
-      } catch (_) {
-        // الموديل الحالي فشل (ربما انتهت حصته أو تم إيقافه)
-        _chat = null;
-        _activeModelName = null;
-      }
-    }
+  Future<GenerateContentResponse> sendMessage(String text) async {
+    return await _chat.sendMessage(Content.text(text));
+  }
 
-    // 2) جرّب كل الموديلات بالترتيب
-    final errors = <String>[];
-    for (final modelName in _models) {
-      try {
-        final model = GenerativeModel(
-          model: modelName,
-          apiKey: _apiKey,
-          systemInstruction: Content.system(_systemPrompt),
-          generationConfig: GenerationConfig(
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          ),
-        );
-
-        // استئناف المحادثة إن كان فيها تاريخ
-        final chat = _history.isEmpty
-            ? model.startChat()
-            : model.startChat(history: _history);
-
-        final response = await chat
-            .sendMessage(content)
-            .timeout(const Duration(seconds: 60));
-        final reply = response.text ?? 'لم أفهم طلبك.';
-
-        // حفظ الموديل النشط
-        _chat = chat;
-        _activeModelName = modelName;
-        _history.add(content);
-        _history.add(Content.text(reply));
-
-        return reply;
-      } catch (e) {
-        final msg = e.toString().split('\n').first;
-        errors.add('$modelName: $msg');
-      }
-    }
-
-    // 3) كل الموديلات فشلت
-    return '❌ تعذّر الاتصال بالمساعد.\n'
-        'تحقق من الإنترنت وحاول مجدداً.\n\n'
-        'تفاصيل: ${errors.take(2).join('\n')}';
+  Future<GenerateContentResponse> sendFunctionResults(List<Part> parts) async {
+    return await _chat.sendMessage(Content.multi(parts));
   }
 
   void reset() {
-    _history.clear();
-    _chat = null;
-    _activeModelName = null;
+    _chat = _model.startChat();
   }
 }
