@@ -4,9 +4,9 @@ class GeminiService {
   final String _apiKey;
 
   static const _models = [
+    'gemini-2.5-flash-lite',  // أفضل دعم للأدوات حالياً
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
-    'gemini-2.5-flash-lite',
   ];
 
   late final GenerativeModel _model;
@@ -29,7 +29,6 @@ class GeminiService {
       generationConfig: GenerationConfig(
         temperature: 0.4,
         maxOutputTokens: 2048,
-        thinkingConfig: ThinkingConfig(thinkingBudget: 0), // 0 = معطل
       ),
       tools: [_buildTools()],
     );
