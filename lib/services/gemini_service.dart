@@ -4,9 +4,8 @@ class GeminiService {
   final String _apiKey;
 
   static const _models = [
-    'gemini-2.5-flash-lite',  // أفضل دعم للأدوات حالياً
+    'gemini-2.5-flash-lite',
     'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
   ];
 
   late final GenerativeModel _model;
@@ -25,11 +24,7 @@ class GeminiService {
       model: _models.first,
       apiKey: _apiKey,
       systemInstruction: Content.system(_systemPrompt),
-      // تعطيل التفكير لحل مشكلة thought_signature
-      generationConfig: GenerationConfig(
-        temperature: 0.4,
-        maxOutputTokens: 2048,
-      ),
+      generationConfig: GenerationConfig(temperature: 0.4, maxOutputTokens: 2048),
       tools: [_buildTools()],
     );
     _chat = _model.startChat();
@@ -40,48 +35,26 @@ class GeminiService {
       FunctionDeclaration(
         'list_files',
         'اعرض الملفات في مجلد معين',
-        Schema.object(properties: {
-          'directory': Schema.string(description: 'مسار المجلد، افتراضي /'),
-        }),
+        Schema.object(properties: {'directory': Schema.string(description: 'مسار المجلد، افتراضي /')}),
       ),
       FunctionDeclaration(
         'read_file',
         'اقرأ محتوى ملف نصي',
-        Schema.object(
-          properties: {
-            'path': Schema.string(description: 'مسار الملف'),
-          },
-          requiredProperties: ['path'],
-        ),
+        Schema.object(properties: {'path': Schema.string(description: 'مسار الملف')}, requiredProperties: ['path']),
       ),
       FunctionDeclaration(
         'edit_file',
         'عدل أو اكتب محتوى في ملف (ينشئه إذا لم يوجد)',
         Schema.object(
-          properties: {
-            'path': Schema.string(description: 'مسار الملف'),
-            'content': Schema.string(description: 'المحتوى الجديد الكامل'),
-          },
+          properties: {'path': Schema.string(description: 'مسار الملف'), 'content': Schema.string(description: 'المحتوى الجديد الكامل')},
           requiredProperties: ['path', 'content'],
         ),
       ),
-      FunctionDeclaration(
-        'get_app_status',
-        'اعرف حالة السيرفر والبوت الحالية (يعمل / متوقف)',
-        Schema.object(properties: {}),
-      ),
+      FunctionDeclaration('get_app_status', 'اعرف حالة السيرفر الحالية', Schema.object(properties: {})),
     ]);
   }
 
-  Future<GenerateContentResponse> sendMessage(String text) async {
-    return await _chat.sendMessage(Content.text(text));
-  }
-
-  Future<GenerateContentResponse> sendFunctionResults(List<Part> parts) async {
-    return await _chat.sendMessage(Content.multi(parts));
-  }
-
-  void reset() {
-    _chat = _model.startChat();
-  }
+  Future<GenerateContentResponse> sendMessage(String text) async => await _chat.sendMessage(Content.text(text));
+  Future<GenerateContentResponse> sendFunctionResults(List<Part> parts) async => await _chat.sendMessage(Content.multi(parts));
+  void reset() => _chat = _model.startChat();
 }
