@@ -9,6 +9,7 @@ import '../utils/constants.dart';
 import '../utils/error_utils.dart';
 import '../utils/formatters.dart';
 import '../utils/api_key_manager.dart';
+import '../widgets/dialogs.dart';
 
 class AIAssistantScreen extends StatefulWidget {
   const AIAssistantScreen({super.key});
@@ -31,11 +32,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
   @override
   void initState() {
     super.initState();
-    _bgCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 20),
-    )..repeat();
-
+    _bgCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 20))..repeat();
     try {
       final key = ApiKeyManager.apiKey;
       if (key.isEmpty) throw Exception('API Key is empty');
@@ -43,12 +40,12 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     } catch (e) {
       _initError = e.toString();
     }
-    
     _messages.add(_Message(
       text: 'مرحباً بك في BIMEX AI 🤖\n\n'
-          'يمكنني الآن قراءة ملفاتك وجلب السجلات (Logs) مباشرة. جرب أن تقول:\n'
+          'يمكنني الآن قراءة وتعديل ملفاتك مباشرة. جرب:\n'
           '• "اعرض لي ملفات المجلد الرئيسي"\n'
-          '• "جيب لي آخر 20 سطر من اللوج"',
+          '• "اقرأ ملف requirements.txt"\n'
+          '• "عدل ملف requirements.txt وأضف requests"',
       isUser: false,
     ));
   }
@@ -75,7 +72,6 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     try {
       var response = await _gemini!.sendMessage(text);
 
-      // حلقة تنفيذ الأوامر (Function Calling Loop)
       while (response.functionCalls.isNotEmpty) {
         final parts = <Part>[];
         for (final call in response.functionCalls) {
@@ -95,10 +91,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _messages.add(_Message(
-          text: '❌ حدث خطأ: ${friendlyError(e)}',
-          isUser: false,
-        ));
+        _messages.add(_Message(text: '❌ خطأ: ${friendlyError(e)}', isUser: false));
         _isLoading = false;
       });
     }
@@ -115,13 +108,18 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
             'count': files.length,
             'files': files.map((f) => '${f['name']} (${f['is_file'] ? fSize(f['size']) : 'مجلد'})').toList(),
           };
+        case 'read_file':
+          final path = call.args['path'] as String;
+          final r = await api.readFileRaw(path);
+          return {'path': path, 'content': r['content'] ?? ''};
+        case 'edit_file':
+          final path = call.args['path'] as String;
+          final content = call.args['content'] as String;
+          await api.writeFileRaw(path, content);
+          return {'ok': true, 'path': path, 'bytes': content.length};
         case 'get_app_status':
           final st = await api.appStatus();
-          return {
-            'state': st.state,
-            'uptime': fTime(st.uptimeSeconds),
-            'has_app': st.app.exists,
-          };
+          return {'state': st.state, 'uptime': fTime(st.uptimeSeconds), 'has_app': st.app.exists};
         default:
           return {'error': 'unknown_function'};
       }
@@ -133,11 +131,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
   }
@@ -153,11 +147,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [C.primary, C.accent]),
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 10)],
-              ),
+              decoration: BoxDecoration(gradient: const LinearGradient(colors: [C.primary, C.accent]), borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 10)]),
               child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16),
             ),
             const SizedBox(width: 12),
@@ -198,10 +188,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
       top: MediaQuery.of(context).size.height * cy - r,
       child: Container(
         width: r * 2, height: r * 2,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withValues(alpha: .05), Colors.transparent], stops: const [0, .5, 1]),
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [color, color.withValues(alpha: .05), Colors.transparent], stops: const [0, .5, 1])),
       ),
     );
   }
@@ -227,14 +214,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [C.primary, C.accent]),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16),
-            ),
+            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(gradient: const LinearGradient(colors: [C.primary, C.accent]), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16)),
             const SizedBox(width: 10),
           ],
           Flexible(
@@ -242,12 +222,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: BoxDecoration(
                 color: isUser ? C.primary.withValues(alpha: .15) : C.surface.withValues(alpha: .85),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: Radius.circular(isUser ? 20 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 20),
-                ),
+                borderRadius: BorderRadius.only(topLeft: const Radius.circular(20), topRight: const Radius.circular(20), bottomLeft: Radius.circular(isUser ? 20 : 4), bottomRight: Radius.circular(isUser ? 4 : 20)),
                 border: Border.all(color: isUser ? C.primary.withValues(alpha: .4) : C.border),
               ),
               child: SelectableText(msg.text, style: TextStyle(color: isUser ? C.primary : Colors.white, fontSize: 14.5, height: 1.6)),
@@ -255,15 +230,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
           ),
           if (isUser) ...[
             const SizedBox(width: 10),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: C.surfaceHi,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: C.border),
-              ),
-              child: const Icon(Icons.person, color: C.primary, size: 16),
-            ),
+            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: C.surfaceHi, borderRadius: BorderRadius.circular(10), border: Border.all(color: C.border)), child: const Icon(Icons.person, color: C.primary, size: 16)),
           ],
         ],
       ),
@@ -275,34 +242,15 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [C.primary, C.accent]),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16),
-          ),
+          Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(gradient: const LinearGradient(colors: [C.primary, C.accent]), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16)),
           const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              color: C.surface.withValues(alpha: .85),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: C.border),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [_dot(0), _dot(150), _dot(300)]),
-          ),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16), decoration: BoxDecoration(color: C.surface.withValues(alpha: .85), borderRadius: BorderRadius.circular(20), border: Border.all(color: C.border)), child: Row(mainAxisSize: MainAxisSize.min, children: [_dot(0), _dot(150), _dot(300)])),
         ],
       ),
     );
   }
 
-  Widget _dot(int delay) => Container(
-    margin: const EdgeInsets.symmetric(horizontal: 4),
-    width: 8, height: 8,
-    decoration: const BoxDecoration(color: C.primary, shape: BoxShape.circle),
-  ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleY(begin: .6, end: 1.4, duration: 500.ms, delay: delay.ms);
+  Widget _dot(int delay) => Container(margin: const EdgeInsets.symmetric(horizontal: 4), width: 8, height: 8, decoration: const BoxDecoration(color: C.primary, shape: BoxShape.circle)).animate(onPlay: (c) => c.repeat(reverse: true)).scaleY(begin: .6, end: 1.4, duration: 500.ms, delay: delay.ms);
 
   Widget _buildInput() {
     return Container(
@@ -312,11 +260,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
         children: [
           Expanded(
             child: Container(
-              decoration: BoxDecoration(
-                color: C.surface,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: C.primary.withValues(alpha: .3)),
-              ),
+              decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(24), border: Border.all(color: C.primary.withValues(alpha: .3))),
               child: TextField(
                 controller: _controller,
                 enabled: !_isLoading && _initError == null,
@@ -324,28 +268,12 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
                 style: const TextStyle(fontSize: 14),
-                decoration: const InputDecoration(
-                  hintText: 'اطلب من BIMEX AI قراءة ملف أو لوج...',
-                  hintStyle: TextStyle(color: C.muted),
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                ),
+                decoration: const InputDecoration(hintText: 'اطلب من BIMEX AI قراءة أو تعديل ملف...', hintStyle: TextStyle(color: C.muted), isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
               ),
             ),
           ),
           const SizedBox(width: 8),
-          Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [C.primary, C.accent]),
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 12)],
-            ),
-            child: IconButton(
-              onPressed: _isLoading ? null : _send,
-              icon: const Icon(Icons.send_rounded, color: Colors.black),
-            ),
-          ),
+          Container(decoration: BoxDecoration(gradient: const LinearGradient(colors: [C.primary, C.accent]), shape: BoxShape.circle, boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 12)]), child: IconButton(onPressed: _isLoading ? null : _send, icon: const Icon(Icons.send_rounded, color: Colors.black))),
         ],
       ),
     );
