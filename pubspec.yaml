@@ -8,8 +8,6 @@ environment:
 
 dependencies:
   flutter:
-  glassmorphism: ^3.0.0
-  google_generative_ai: ^0.4.6
     sdk: flutter
   provider: ^6.1.2
   shared_preferences: ^2.3.2
@@ -30,9 +28,11 @@ dependencies:
   highlight: ^0.7.0
   package_info_plus: ^8.1.1
   crypto: ^3.0.5
+  device_info_plus: ^11.1.0
   confetti: ^0.7.0
   audioplayers: ^6.1.0
-  device_info_plus: ^11.1.0
+  google_generative_ai: ^0.4.6
+  glassmorphism: ^3.0.0
 
 dev_dependencies:
   flutter_test:
