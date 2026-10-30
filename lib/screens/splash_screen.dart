@@ -190,7 +190,7 @@ class _SplashScreenState extends State<SplashScreen>
                   'HOST PANEL',
                   style: TextStyle(
                       fontSize: 34, fontWeight: FontWeight.w900,
-                      letterSpacing: 5, color: Colors.white),
+                      letterSpacing: 8, color: Colors.white),
                 ),
               ).animate().fadeIn(duration: 700.ms, delay: 300.ms).slideY(begin: .3, end: 0, curve: Curves.easeOutCubic),
               const SizedBox(height: 6),
@@ -279,7 +279,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _logoMark() {
     return Container(
-      width: 120, height: 120,
+      width: 140, height: 140,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const LinearGradient(colors: [C.primary, C.accent], begin: Alignment.topLeft, end: Alignment.bottomRight),
@@ -296,7 +296,7 @@ class _SplashScreenState extends State<SplashScreen>
     ).animate(onPlay: (c) => c.repeat(reverse: true)).boxShadow(
           begin: BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 30, spreadRadius: 4),
           end: BoxShadow(color: C.accent.withValues(alpha: .7), blurRadius: 55, spreadRadius: 10),
-          duration: 2200.ms, curve: Curves.easeInOut,
+          duration: 1800.ms, curve: Curves.easeInOut,
         );
   }
 

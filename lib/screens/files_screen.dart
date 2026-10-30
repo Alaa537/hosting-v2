@@ -559,51 +559,133 @@ class _FilesScreenState extends State<FilesScreen> {
     final name = item['name'] as String;
     final isFile = item['is_file'] == true;
     final selected = _selected.contains(name);
-    final color = isFile ? C.primary : C.accent;
-    final icon = isFile ? _fileIcon(name) : Icons.folder;
+    final mime = (item['mimetype'] ?? '').toString();
+    final color = _fileColor(mime, isFile);
+    final icon = _fileIcon(name);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: selected
-            ? C.primary.withValues(alpha: .12)
-            : C.surface,
-        borderRadius: BorderRadius.circular(12),
+        gradient: selected
+            ? LinearGradient(colors: [
+                color.withValues(alpha: .15),
+                color.withValues(alpha: .05),
+              ])
+            : LinearGradient(colors: [
+                C.surface.withValues(alpha: .85),
+                C.surfaceHi.withValues(alpha: .65),
+              ]),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-            color: selected
-                ? C.primary.withValues(alpha: .6)
-                : C.border),
+          color: selected ? color.withValues(alpha: .7) : C.border,
+          width: selected ? 1.5 : 1,
+        ),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: .3),
+                  blurRadius: 20,
+                  spreadRadius: 1,
+                )
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: .15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
       child: ListTile(
         onLongPress: () => _toggleSelect(item),
-        onTap: () { Haptics.tap(); _enter(item); },
+        onTap: () => _enter(item),
         leading: _selectionMode
             ? Checkbox(
                 value: selected,
                 onChanged: (_) => _toggleSelect(item),
                 activeColor: C.primary,
               )
-            : Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 22),
+            : Stack(
+                children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: .15),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withValues(alpha: .3),
+                          blurRadius: 12,
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: 44, height: 44,
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                ],
               ),
-        title: Text(name,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-            maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          name,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         subtitle: Text(
           isFile
-              ? '${fSize(item['size'])} · ${item['mimetype'] ?? '—'}'
+              ? '${fSize(item['size'])} · ${_mimeLabel(mime)}'
               : 'مجلد',
-          style: const TextStyle(color: C.muted, fontSize: 10),
+          style: TextStyle(
+            color: C.muted.withValues(alpha: .8),
+            fontSize: 10.5,
+          ),
         ),
         trailing: _selectionMode
             ? null
-            : const Icon(Icons.chevron_right, color: C.muted, size: 18),
+            : Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: C.surfaceHi.withValues(alpha: .5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  isFile ? Icons.chevron_right : Icons.arrow_forward_ios,
+                  color: C.muted,
+                  size: 14,
+                ),
+              ),
       ),
     );
   }
+
+  Color _fileColor(String mime, bool isFile) {
+    if (!isFile) return C.accent;
+    if (mime.startsWith('image/')) return const Color(0xFF5FFF87);
+    if (mime.startsWith('video/')) return const Color(0xFFFF7B3D);
+    if (mime.startsWith('audio/')) return const Color(0xFFFF5FD7);
+    if (mime.contains('pdf')) return const Color(0xFFFF5252);
+    if (mime.contains('zip') || mime.contains('archive')) return const Color(0xFFFFD75F);
+    if (mime.contains('json') || mime.contains('yaml') || mime.contains('xml')) {
+      return const Color(0xFF6FC3FF);
+    }
+    if (mime.contains('python') || mime.contains('javascript') || mime.contains('text/')) {
+      return C.primary;
+    }
+    return C.muted;
+  }
+
+  String _mimeLabel(String mime) {
+    if (mime.isEmpty) return 'ملف';
+    if (mime.startsWith('image/')) return 'صورة';
+    if (mime.startsWith('video/')) return 'فيديو';
+    if (mime.startsWith('audio/')) return 'صوت';
+    if (mime.contains('pdf')) return 'PDF';
+    if (mime.contains('zip')) return 'ZIP';
+    if (mime.contains('json')) return 'JSON';
+    if (mime.contains('python')) return 'Python';
+    if (mime.startsWith('text/')) return 'نص';
+    return mime.split('/').last;
+  }
+
 }

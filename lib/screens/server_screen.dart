@@ -331,16 +331,54 @@ class _ServerScreenState extends State<ServerScreen> {
       ]);
 
   Widget _action(IconData ic, String label, Color color, VoidCallback onTap) {
-    return Material(color: color.withValues(alpha: .12),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12),
-        child: Padding(padding: const EdgeInsets.symmetric(
-            horizontal: 16, vertical: 12),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                color.withValues(alpha: .18),
+                color.withValues(alpha: .08),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: color.withValues(alpha: .5),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: .25),
+                blurRadius: 16,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(ic, color: color, size: 18),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: color,
-                fontWeight: FontWeight.w700, fontSize: 13)),
-          ]))));
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(ic, color: color, size: 16),
+            ),
+            const SizedBox(width: 10),
+            Text(label, style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              letterSpacing: .3,
+            )),
+          ]),
+        ),
+      ),
+    );
   }
 }

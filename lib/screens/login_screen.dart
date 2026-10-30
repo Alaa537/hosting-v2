@@ -284,25 +284,55 @@ class _LoginScreenState extends State<LoginScreen>
   }) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            C.surface.withValues(alpha: .9),
+            C.surfaceHi.withValues(alpha: .7),
+          ],
+        ),
+        border: Border.all(
+          color: C.primary.withValues(alpha: .3),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-              color: C.primary.withValues(alpha: .08),
-              blurRadius: 18, spreadRadius: 1),
+            color: C.primary.withValues(alpha: .15),
+            blurRadius: 20,
+            spreadRadius: 1,
+          ),
         ],
       ),
       child: TextFormField(
         controller: controller,
         obscureText: obscure,
         onFieldSubmitted: onSubmitted,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon, color: C.primary, size: 20),
+          labelStyle: TextStyle(color: C.muted.withValues(alpha: .9)),
+          prefixIcon: Container(
+            margin: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [
+                C.primary.withValues(alpha: .2),
+                C.primary.withValues(alpha: .05),
+              ]),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: C.primary, size: 18),
+          ),
           suffixIcon: suffix,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          filled: false,
         ),
-        validator: (v) =>
-            (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+        validator: (v) => (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
       ),
     );
   }

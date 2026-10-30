@@ -178,29 +178,99 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _bar(String label, double? pct, int? used, int? limit, Color color) {
     final v = pct ?? 0;
-    final colorByPct = v < 75 ? C.success : v < 90 ? C.warning : C.danger;
+    final effectiveColor = v < 75
+        ? C.success
+        : v < 90
+            ? C.warning
+            : C.danger;
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        SizedBox(width: 42, child: Text(label,
-            style: const TextStyle(color: C.muted, fontSize: 11, fontWeight: FontWeight.w700))),
-        Expanded(child: ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: (v / 100).clamp(0, 1),
-            minHeight: 6,
-            backgroundColor: C.border,
-            valueColor: AlwaysStoppedAnimation(colorByPct),
+        SizedBox(
+          width: 42,
+          child: Text(label, style: TextStyle(
+            color: C.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: .5,
+          )),
+        ),
+        Expanded(
+          child: Stack(
+            children: [
+              // الخلفية
+              Container(
+                height: 8,
+                decoration: BoxDecoration(
+                  color: C.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              // الشريط
+              FractionallySizedBox(
+                widthFactor: (v / 100).clamp(0, 1),
+                child: Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                      effectiveColor.withValues(alpha: .7),
+                      effectiveColor,
+                    ]),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: effectiveColor.withValues(alpha: .5),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        )),
-        const SizedBox(width: 10),
-        SizedBox(width: 44, child: Text('${v.toStringAsFixed(1)}%',
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: effectiveColor.withValues(alpha: .15),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: effectiveColor.withValues(alpha: .3),
+            ),
+          ),
+          child: Text(
+            '${v.toStringAsFixed(1)}%',
+            style: TextStyle(
+              color: effectiveColor,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
       ]),
       if (limit != null && limit > 0) Padding(
-        padding: const EdgeInsets.only(left: 42, top: 3),
-        child: Text('${fSize(used)} / ${fSize(limit)}',
-            style: const TextStyle(color: C.muted, fontSize: 10)),
+        padding: const EdgeInsets.only(left: 42, top: 6),
+        child: Row(children: [
+          Container(
+            width: 6, height: 6,
+            decoration: BoxDecoration(
+              color: effectiveColor.withValues(alpha: .6),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '${fSize(used)} / ${fSize(limit)}',
+            style: TextStyle(
+              color: C.muted.withValues(alpha: .7),
+              fontSize: 10,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ]),
       ),
     ]);
   }

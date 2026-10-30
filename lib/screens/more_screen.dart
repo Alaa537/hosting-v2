@@ -13,6 +13,7 @@ import 'app_screen.dart';
 import 'live_console_screen.dart';
 import 'admin_screen.dart';
 import 'settings_screen.dart';
+import 'developer_screen.dart';
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
@@ -108,6 +109,9 @@ class MoreScreen extends StatelessWidget {
               _tile(context, Icons.admin_panel_settings_outlined,
                   'لوحة الأدمن', 'المستخدمين · الأجهزة · المحتوى',
                   () => _push(context, const AdminScreen()), accent: true),
+            _tile(context, Icons.code, 'معلومات المطور',
+                'تعرف على المطور والتواصل',
+                () => _push(context, const DeveloperScreen()), accent: true),
             _tile(context, Icons.settings_outlined, 'الإعدادات',
                 'كلمة المرور · الجلسات',
                 () => _push(context, const SettingsScreen())),
@@ -151,19 +155,81 @@ class MoreScreen extends StatelessWidget {
 
   Widget _tile(BuildContext ctx, IconData ic, String title, String sub,
       VoidCallback onTap, {bool accent = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: GlassCard(
-        accent: accent ? C.accent : C.primary,
-        padding: EdgeInsets.zero,
-        onTap: onTap,
-        child: ListTile(
-          leading: Icon(ic, color: accent ? C.accent : C.primary),
-          title: Text(title,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-          subtitle: Text(sub,
-              style: const TextStyle(color: C.muted, fontSize: 11)),
-          trailing: const Icon(Icons.chevron_right, color: C.muted),
+    final color = accent ? C.accent : C.primary;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: C.surface.withValues(alpha: .85),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: accent
+              ? color.withValues(alpha: .4)
+              : C.border,
+          width: accent ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .15),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+          if (accent)
+            BoxShadow(
+              color: color.withValues(alpha: .2),
+              blurRadius: 20,
+              spreadRadius: 1,
+            ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: color.withValues(alpha: .1),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        color.withValues(alpha: .2),
+                        color.withValues(alpha: .08),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: color.withValues(alpha: .3),
+                    ),
+                  ),
+                  child: Icon(ic, color: color, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: accent ? C.accent : Colors.white,
+                      )),
+                      const SizedBox(height: 2),
+                      Text(sub, style: TextStyle(
+                        color: C.muted.withValues(alpha: .8),
+                        fontSize: 11,
+                      )),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right,
+                    color: color.withValues(alpha: .6), size: 18),
+              ],
+            ),
+          ),
         ),
       ),
     );
