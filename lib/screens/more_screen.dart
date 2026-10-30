@@ -5,6 +5,7 @@ import '../utils/constants.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/glass_card.dart';
 import 'profile_screen.dart';
+import 'ai_assistant_screen.dart';
 import 'backups_screen.dart';
 import 'notifications_screen.dart';
 import 'sessions_screen.dart';
@@ -84,6 +85,12 @@ class MoreScreen extends StatelessWidget {
               ]),
             ),
             const SizedBox(height: 20),
+            _tile(context, Icons.auto_awesome, 'المساعد الذكي',
+                'Gemini AI · اسألني أي شيء',
+                () => _push(context, const AIAssistantScreen()), accent: true),
+            _tile(context, Icons.code, 'معلومات المطور',
+                'تعرف على المطور والتواصل',
+                () => _push(context, const DeveloperScreen()), accent: true),
             _tile(context, Icons.person_outline, 'الملف الشخصي',
                 'معلومات الحساب',
                 () => _push(context, const ProfileScreen())),
