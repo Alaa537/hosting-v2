@@ -4,12 +4,11 @@ class GeminiService {
   final String _apiKey;
 
   // قائمة الموديلات (بالترتيب — يحاول الأول فالثاني...)
-  static const _models = [
-    'gemini-2.5-flash',       // الأحدث
-    'gemini-2.0-flash',       // مستقر وسريع
-    'gemini-2.0-flash-lite',  // أخف وأسرع
-    'gemini-1.5-flash-latest',// احتياطي
-    'gemini-1.5-pro-latest',  // احتياطي أبطأ
+    static const _models = [
+    'gemini-3.5-flash-lite',  // الأسرع والأكثر استقراراً
+    'gemini-3.1-flash-lite',  // احتياطي
+    'gemini-2.5-flash-lite',  // احتياطي
+    'gemini-3.8-flash',       // احتياطي أخير (قد يكون بطيئاً)
   ];
 
   ChatSession? _chat;
@@ -31,7 +30,7 @@ class GeminiService {
       try {
         final response = await _chat!
             .sendMessage(content)
-            .timeout(const Duration(seconds: 30));
+            .timeout(const Duration(seconds: 60));
         final reply = response.text ?? 'لم أفهم طلبك.';
         _history.add(content);
         _history.add(Content.text(reply));
@@ -64,7 +63,7 @@ class GeminiService {
 
         final response = await chat
             .sendMessage(content)
-            .timeout(const Duration(seconds: 30));
+            .timeout(const Duration(seconds: 60));
         final reply = response.text ?? 'لم أفهم طلبك.';
 
         // حفظ الموديل النشط
