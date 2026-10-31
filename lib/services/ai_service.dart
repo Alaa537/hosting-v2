@@ -33,9 +33,8 @@ class AIService {
 
   // تحديث الموديلات (تم تعديل Groq لموديلات شغالة)
   final List<BimexModel> models = [
-    BimexModel('bimex1', 'BIMEX 1 (Gemini)', 'gemini', 'gemini-3.5-flash-lite'),
+    BimexModel('bimex1', 'BIMEX 1 (سريع)', 'gemini', 'gemini-3.5-flash-lite'),
     BimexModel('bimex2', 'BIMEX 2 (ذكي جداً)', 'groq', 'openai/gpt-oss-120b'),
-    BimexModel('bimex3', 'BIMEX 3 (خارق السرعة)', 'groq', 'openai/gpt-oss-20b'),
   ];
 
   static const _systemPrompt = '''
