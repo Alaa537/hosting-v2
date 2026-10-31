@@ -1,13 +1,15 @@
+import 'dart:io';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:markdown/markdown.dart' as md;
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/monokai-sublime.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../services/gemini_service.dart';
 import '../utils/constants.dart';
@@ -26,11 +28,9 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
   final _controller = TextEditingController();
   final _scrollCtrl = ScrollController();
   final List<_Message> _messages = [];
-  
   GeminiService? _gemini;
   bool _isLoading = false;
   String? _initError;
-
   late AnimationController _bgCtrl;
 
   @override
@@ -46,11 +46,17 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     }
     _messages.add(_Message(
       text: 'أهلاً بك في **BIMEX AI** 🤖\n\n'
-          'مساعدك الذكي لإدارة السيرفر. يمكنك سؤالي عن:\n'
-          '• قراءة وتعديل الملفات.\n'
-          '• حالة السيرفر والسجلات.\n'
-          '• كتابة وشرح أكواد Python.\n\n'
-          '*جرب أن تطلب مني شيئاً!*',
+          'مساعدك الشامل لإدارة السيرفر.\n\n'
+          '**صلاحياتي:**\n'
+          '📂 إدارة الملفات (قراءة/تعديل/حذف/بحث)\n'
+          '🎮 التحكم بالبوت (تشغيل/إيقاف/إعادة/إيقاف قسري)\n'
+          '📊 إحصائيات السيرفر (CPU/RAM/Disk)\n'
+          '💻 إرسال أوامر للـ console\n'
+          '📋 قراءة وتحليل الـ Live Logs\n\n'
+          '**جرب:**\n'
+          '• "جيبلي اللوج وحلل الأخطاء"\n'
+          '• "شغّل البوت"\n'
+          '• "اعرض لي إحصائيات السيرفر"',
       isUser: false,
     ));
   }
@@ -61,6 +67,46 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     _controller.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  // 🔥 دالة سحب الـ Live Logs من WebSocket
+  Future<String> _fetchLiveLogs() async {
+    final api = context.read<AuthProvider>().api!;
+    final wsBase = api.baseUrl.replaceFirst('http', 'ws');
+    final url = '$wsBase/ws/events?token=${api.token}';
+    final lines = <String>[];
+    WebSocket? ws;
+
+    try {
+      ws = await WebSocket.connect(url).timeout(const Duration(seconds: 5));
+      final completer = Completer<void>();
+      final sub = ws.listen(
+        (data) {
+          try {
+            final ev = jsonDecode(data);
+            if (ev['type'] == 'log') {
+              final line = (ev['data'] ?? '').toString().trimRight();
+              if (line.isNotEmpty) lines.add(line);
+              if (lines.length >= 50) completer.complete();
+            }
+          } catch (_) {}
+        },
+        onDone: () { if (!completer.isCompleted) completer.complete(); },
+        onError: (_) { if (!completer.isCompleted) completer.complete(); },
+      );
+      // ننتظر 3 ثواني كحد أقصى لجمع اللوج
+      await Future.any([
+        completer.future,
+        Future.delayed(const Duration(seconds: 3)),
+      ]);
+      await sub.cancel();
+    } catch (_) {
+    } finally {
+      try { await ws?.close(); } catch (_) {}
+    }
+
+    if (lines.isEmpty) return "⚠️ لم يتم التقاط أي سجلات (اللوج فاضي أو السيرفر مش شغال).";
+    return lines.join('\n');
   }
 
   Future<void> _send() async {
@@ -75,20 +121,26 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     _scrollToBottom();
 
     try {
-      var response = await _gemini!.sendMessage(text);
+      // 🔥 لو السؤال فيه "لوج" أو "logs"، نجمع اللوج ونبعته للـ AI
+      final lower = text.toLowerCase();
+      final wantsLogs = lower.contains('لوج') || lower.contains('log') || lower.contains('سجل') || lower.contains('logs');
+      String messageToAI = text;
+
+      if (wantsLogs) {
+        final logs = await _fetchLiveLogs();
+        messageToAI = "$text\n\n--- Live Logs ---\n$logs\n--- End of Logs ---";
+      }
+
+      var response = await _gemini!.sendMessage(messageToAI);
 
       while (response.functionCalls.isNotEmpty) {
         final functionResponses = <Map<String, dynamic>>[];
         final originalFunctionCalls = <Map<String, dynamic>>[];
-
         for (final call in response.functionCalls) {
           originalFunctionCalls.add(call.rawPart);
           final result = await _executeFunction(call);
           functionResponses.add({
-            'functionResponse': {
-              'name': call.name,
-              'response': result
-            }
+            'functionResponse': {'name': call.name, 'response': result}
           });
         }
         response = await _gemini!.sendFunctionResults(functionResponses, originalFunctionCalls);
@@ -114,27 +166,107 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     final api = context.read<AuthProvider>().api!;
     try {
       switch (call.name) {
+        // ============ FILE OPERATIONS ============
         case 'list_files':
           final dir = (call.args['directory'] as String?) ?? '/';
           final files = await api.listFiles(directory: dir);
           return {
             'count': files.length,
-            'files': files.map((f) => '${f['name']} (${f['is_file'] ? fSize(f['size']) : 'مجلد'})').toList(),
+            'files': files.map((f) => {
+              'name': f['name'],
+              'is_file': f['is_file'],
+              'size': f['is_file'] ? fSize(f['size']) : 'folder',
+            }).toList(),
           };
+
         case 'read_file':
           final path = call.args['path'] as String;
           final r = await api.readFileRaw(path);
-          return {'path': path, 'content': r['content'] ?? ''};
+          return {'path': path, 'content': r['content'] ?? '', 'bytes': (r['content'] as String? ?? '').length};
+
         case 'edit_file':
           final path = call.args['path'] as String;
           final content = call.args['content'] as String;
           await api.writeFileRaw(path, content);
-          return {'ok': true, 'path': path, 'bytes': content.length};
+          return {'ok': true, 'path': path, 'bytes': content.length,
+                  'note': 'يجب إعادة تشغيل البوت لتطبيق التغييرات'};
+
+        case 'delete_files':
+          final raw = call.args['paths'];
+          final paths = (raw is List) ? raw.map((e) => e.toString()).toList() : <String>[];
+          if (paths.isEmpty) return {'error': 'no paths provided'};
+          // حذف كل ملف من جذر / (إذا كان المسار كاملاً)
+          for (final p in paths) {
+            final slash = p.lastIndexOf('/');
+            final dir = slash > 0 ? p.substring(0, slash) : '/';
+            final name = slash >= 0 ? p.substring(slash + 1) : p;
+            await api.deleteFiles(dir, [name]);
+          }
+          return {'ok': true, 'deleted': paths};
+
+        case 'search_files':
+          final query = call.args['query'] as String;
+          final dir = (call.args['directory'] as String?) ?? '/';
+          final r = await api.searchFiles(query, directory: dir);
+          return {
+            'query': query,
+            'count': (r['results'] as List? ?? []).length,
+            'results': (r['results'] as List? ?? [])
+                .map((x) => x['path']).toList(),
+          };
+
+        // ============ BOT CONTROL ============
         case 'get_app_status':
           final st = await api.appStatus();
-          return {'state': st.state, 'uptime': fTime(st.uptimeSeconds), 'has_app': st.app.exists};
+          return {
+            'state': st.state,
+            'name': st.name,
+            'uptime': fTime(st.uptimeSeconds),
+            'has_app': st.app.exists,
+            'has_requirements': st.app.requirements,
+          };
+
+        case 'start_bot':
+          await api.appStart();
+          return {'ok': true, 'action': 'start', 'state': 'starting'};
+
+        case 'stop_bot':
+          await api.appStop();
+          return {'ok': true, 'action': 'stop', 'state': 'stopping'};
+
+        case 'restart_bot':
+          await api.appRestart();
+          return {'ok': true, 'action': 'restart', 'state': 'restarting'};
+
+        case 'kill_bot':
+          await api.appKill();
+          return {'ok': true, 'action': 'kill', 'state': 'killed'};
+
+        // ============ CONSOLE & STATS ============
+        case 'send_command':
+          final cmd = call.args['command'] as String;
+          await api.appCommand(cmd);
+          return {'ok': true, 'command': cmd};
+
+        case 'get_server_stats':
+          final r = await api.serverResources();
+          return {
+            'state': r.state,
+            'name': r.name,
+            'cpu_percent': r.cpu,
+            'memory_used': fSize(r.memUsed),
+            'memory_limit': fSize(r.memLimit),
+            'memory_percent': r.memPercent,
+            'disk_used': fSize(r.diskUsed),
+            'disk_limit': fSize(r.diskLimit),
+            'disk_percent': r.diskPercent,
+            'network_rx': fSize(r.netRx),
+            'network_tx': fSize(r.netTx),
+            'uptime': fTime(r.uptimeSeconds),
+          };
+
         default:
-          return {'error': 'unknown_function'};
+          return {'error': 'unknown_function: ${call.name}'};
       }
     } catch (e) {
       return {'error': friendlyError(e)};
@@ -247,9 +379,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
                       onTapLink: (text, url, title) async {
                         if (url != null) {
                           final uri = Uri.parse(url);
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri, mode: LaunchMode.externalApplication);
-                          }
+                          if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
                         }
                       },
                       styleSheet: MarkdownStyleSheet(
@@ -261,9 +391,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
                         codeblockDecoration: BoxDecoration(color: const Color(0xFF1A1A24), borderRadius: BorderRadius.circular(8)),
                         blockquoteDecoration: BoxDecoration(color: C.surfaceHi, borderRadius: BorderRadius.circular(8), border: const Border(left: BorderSide(color: C.primary, width: 4))),
                       ),
-                      builders: {
-                        'code': _CodeElementBuilder(),
-                      },
+                      builders: {'code': _CodeElementBuilder()},
                     ),
             ),
           ),
@@ -346,7 +474,6 @@ class _Message {
   _Message({required this.text, required this.isUser});
 }
 
-/// باني مخصص للأكواد لتلوينها وإضافة زر النسخ
 class _CodeElementBuilder extends MarkdownElementBuilder {
   @override
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
@@ -417,3 +544,4 @@ class _CopyCodeButton extends StatelessWidget {
     );
   }
 }
+
