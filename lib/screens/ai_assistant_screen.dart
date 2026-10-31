@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/monokai-sublime.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -372,19 +373,7 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(lang.toUpperCase(), style: const TextStyle(color: C.primary, fontSize: 10, fontWeight: FontWeight.bold)),
-                GestureDetector(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: code));
-                    ScaffoldMessenger.of(preferredStyle?.inherit == true ? null : null).showSnackBar(const SnackBar(content: Text('تم نسخ الكود'), duration: Duration(seconds: 1)));
-                  },
-                  child: const Row(
-                    children: [
-                      Icon(Icons.copy, color: C.muted, size: 14),
-                      SizedBox(width: 4),
-                      Text('نسخ', style: TextStyle(color: C.muted, fontSize: 10)),
-                    ],
-                  ),
-                ),
+                _CopyCodeButton(code: code),
               ],
             ),
           ),
@@ -398,6 +387,31 @@ class _CodeElementBuilder extends MarkdownElementBuilder {
               textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 12.5),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CopyCodeButton extends StatelessWidget {
+  final String code;
+  const _CopyCodeButton({required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: code));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم نسخ الكود'), duration: Duration(seconds: 1)),
+        );
+      },
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.copy, color: C.muted, size: 14),
+          SizedBox(width: 4),
+          Text('نسخ', style: TextStyle(color: C.muted, fontSize: 10)),
         ],
       ),
     );

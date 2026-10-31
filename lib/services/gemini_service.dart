@@ -51,7 +51,7 @@ class GeminiService {
   }
 
   Future<GeminiResponse> _callApi() async {
-    final url = 'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey'\;
+    final url = 'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey';
     final body = {
       'contents': _history,
       'tools': [_buildTools()],
