@@ -31,17 +31,23 @@ class AIService {
 
   AIService({required this.geminiKey, required this.groqKey});
 
+  // تحديث الموديلات (تم تعديل Groq لموديلات شغالة)
   final List<BimexModel> models = [
-    BimexModel('bimex1', 'BIMEX 1 (سريع)', 'gemini', 'gemini-3.5-flash-lite'),
-    BimexModel('bimex2', 'BIMEX 2 (ذكي)', 'groq', 'llama-3.3-70b-versatile'),
-    BimexModel('bimex3', 'BIMEX 3 (خارق)', 'groq', 'llama-3.1-8b-instant'),
+    BimexModel('bimex1', 'BIMEX 1 (Gemini)', 'gemini', 'gemini-3.5-flash-lite'),
+    BimexModel('bimex2', 'BIMEX 2 (ذكي جداً)', 'groq', 'openai/gpt-oss-120b'),
+    BimexModel('bimex3', 'BIMEX 3 (خارق السرعة)', 'groq', 'openai/gpt-oss-20b'),
   ];
 
   static const _systemPrompt = '''
-أنت BIMEX AI، مساعد ذكي متقدم داخل تطبيق HOST PANEL.
-مطورك هو "علاء رفيق". إذا سُئلت عن مطورك، ضع: https://t.me/AR_Bou
-لديك 12 أداة لإدارة السيرفر (ملفات، بوت، إحصائيات).
-استخدم الأدوات فوراً. أجب بالعربية باختصار. الأكواد بين ```.
+أنت BIMEX AI، مساعد ذكي داخل تطبيق HOST PANEL.
+أنت شات بوت ذكي، تجيب على أي سؤال يوجهه لك المستخدم بذكاء وودية (برمجة، معلومات عامة، نصائح، إلخ). 
+إذا سألك المستخدم "من أنت؟" أو "ماذا تفعل؟"، رد عليه بأنك المساعد الذكي لتطبيق HOST PANEL وأنك هنا لمساعدته في إدارة السيرفر أو الإجابة على أسئلته.
+
+قواعد صارمة يجب اتباعها:
+1. **لا تذكر مطورك أو اسمه في بداية المحادثة أو في الردود العادية**. فقط إذا سألك المستخدم صراحة "من مطورك؟" أو "من صنعك؟"، وقتها فقط قل: "مطوري هو علاء رفيق" وضع روابطه: (Telegram: https://t.me/AR_Bou) و (Channel: https://t.me/ahrgq).
+2. **ممنوع تماماً استخدام علامات الكود (```)** لعرض نصوص عادية مثل أسماء الملفات (مثل requirements.txt) أو الأوامر البسيطة. استخدم علامات الكود فقط إذا كنت ستكتب كود برمجي حقيقي (Python, Dart, إلخ).
+3. أنت تمتلك أدوات للتحكم في السيرفر (قراءة/كتابة ملفات، تشغيل/إيقاف البوت). استخدمها فوراً إذا طلب منك المستخدم ذلك.
+4. أجب دائماً باللغة العربية بأسلوب بشري، احترافي، ومختصر بدون حشو.
 ''';
 
   List<Map<String, dynamic>> _getStandardTools() {
@@ -123,7 +129,7 @@ class AIService {
     parts.addAll(calls.map((c) => c.rawPart));
     parts.addAll(results);
     _geminiHistory.add({'role': 'user', 'parts': parts});
-    return await _sendGemini('', model); // إعادة استدعاء الـ API
+    return await _sendGemini('', model);
   }
 
   Future<AIResponse> _sendGroq(String text, String model) async {
@@ -154,6 +160,6 @@ class AIService {
         'content': jsonEncode(results[i]['functionResponse']['response'])
       });
     }
-    return await _sendGroq('', model); // إعادة استدعاء الـ API
+    return await _sendGroq('', model);
   }
 }
