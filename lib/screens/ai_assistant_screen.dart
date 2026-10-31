@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/gemini_service.dart';
@@ -9,7 +8,6 @@ import '../utils/constants.dart';
 import '../utils/error_utils.dart';
 import '../utils/formatters.dart';
 import '../utils/api_key_manager.dart';
-import '../widgets/dialogs.dart';
 
 class AIAssistantScreen extends StatefulWidget {
   const AIAssistantScreen({super.key});
@@ -73,12 +71,20 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
       var response = await _gemini!.sendMessage(text);
 
       while (response.functionCalls.isNotEmpty) {
-        final parts = <Part>[];
+        final functionResponses = <Map<String, dynamic>>[];
+        final originalFunctionCalls = <Map<String, dynamic>>[];
+
         for (final call in response.functionCalls) {
+          originalFunctionCalls.add(call.rawPart);
           final result = await _executeFunction(call);
-          parts.add(FunctionResponse(call.name, result));
+          functionResponses.add({
+            'functionResponse': {
+              'name': call.name,
+              'response': result
+            }
+          });
         }
-        response = await _gemini!.sendFunctionResults(parts);
+        response = await _gemini!.sendFunctionResults(functionResponses, originalFunctionCalls);
       }
 
       final reply = response.text ?? 'لم أفهم طلبك.';
@@ -97,7 +103,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
     }
   }
 
-  Future<Map<String, Object?>> _executeFunction(FunctionCall call) async {
+  Future<Map<String, dynamic>> _executeFunction(GeminiFunctionCall call) async {
     final api = context.read<AuthProvider>().api!;
     try {
       switch (call.name) {

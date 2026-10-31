@@ -1,112 +1,156 @@
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
+
+class GeminiFunctionCall {
+  final String name;
+  final Map<String, dynamic> args;
+  final Map<String, dynamic> rawPart; // لحفظ thought_signature
+  
+  GeminiFunctionCall(this.name, this.args, this.rawPart);
+}
+
+class GeminiResponse {
+  final String? text;
+  final List<GeminiFunctionCall> functionCalls;
+  final Map<String, dynamic> rawContent;
+  
+  GeminiResponse(this.text, this.functionCalls, this.rawContent);
+}
 
 class GeminiService {
   final String _apiKey;
-
-  // الموديلات بالترتيب (جوجل بتنصح بـ 3.5-flash-lite حالياً)
-  static const _models = [
-    'gemini-3.5-flash-lite',  // الموديل الأساسي
-    'gemini-3.1-flash-lite',  // احتياطي
-    'gemini-3.8-flash',       // احتياطي
-  ];
-
-  ChatSession? _chat;
-  String? _activeModelName;
-  final List<Content> _history = [];
-
-  static const _systemPrompt = '''
-أنت BIMEX AI، مساعد ذكي داخل تطبيق HOST PANEL.
-لديك أدوات (Tools) للوصول لملفات السيرفر وتعديلها.
-استخدم أداة `edit_file` فوراً عندما يطلب منك المستخدم تعديل أو كتابة أي ملف.
-لا تعتذر وتقل لا أستطيع التعديل، بل استخدم الأداة المتاحة.
-أجب بالعربية الفصحى المبسطة وبأسلوب عملي ومختصر.
-''';
+  final String _model = 'gemini-3.5-flash-lite';
+  final List<Map<String, dynamic>> _history = [];
 
   GeminiService({required String apiKey}) : _apiKey = apiKey;
 
-  // دالة إنشاء الأدوات
-  Tool _buildTools() {
-    return Tool(functionDeclarations: [
-      FunctionDeclaration(
-        'list_files',
-        'اعرض الملفات في مجلد معين',
-        Schema.object(properties: {'directory': Schema.string(description: 'مسار المجلد، افتراضي /')}),
-      ),
-      FunctionDeclaration(
-        'read_file',
-        'اقرأ محتوى ملف نصي',
-        Schema.object(properties: {'path': Schema.string(description: 'مسار الملف')}, requiredProperties: ['path']),
-      ),
-      FunctionDeclaration(
-        'edit_file',
-        'عدل أو اكتب محتوى في ملف (ينشئه إذا لم يوجد)',
-        Schema.object(
-          properties: {'path': Schema.string(description: 'مسار الملف'), 'content': Schema.string(description: 'المحتوى الجديد الكامل')},
-          requiredProperties: ['path', 'content'],
-        ),
-      ),
-      FunctionDeclaration('get_app_status', 'اعرف حالة السيرفر الحالية', Schema.object(properties: {})),
-    ]);
+  Future<GeminiResponse> sendMessage(String text) async {
+    _history.add({
+      'role': 'user',
+      'parts': [{'text': text}]
+    });
+    return await _callApi();
   }
 
-  // دالة الإرسال مع خاصية الـ Fallback (التجربة التلقائية)
-  Future<GenerateContentResponse> sendMessage(String text) async {
-    final content = Content.text(text);
+  Future<GeminiResponse> sendFunctionResults(List<Map<String, dynamic>> functionResponses, List<Map<String, dynamic>> originalFunctionCallParts) async {
+    final parts = <Map<String, dynamic>>[];
+    // 1. نرجع الـ functionCall الأصلي بالـ thought_signature بتاعه
+    parts.addAll(originalFunctionCallParts);
+    // 2. نضيف نتيجة الأداة
+    parts.addAll(functionResponses);
 
-    // 1. جرّب الموديل النشط حالياً
-    if (_chat != null) {
-      try {
-        final response = await _chat!.sendMessage(content).timeout(const Duration(seconds: 30));
-        _history.add(content);
-        _history.add(Content.text(response.text ?? ''));
-        return response;
-      } catch (_) {
-        // لو فشل، بنمسح الشات عشان نجرب موديل جديد
-        _chat = null;
-        _activeModelName = null;
+    _history.add({
+      'role': 'user',
+      'parts': parts
+    });
+    
+    return await _callApi();
+  }
+
+  Future<GeminiResponse> _callApi() async {
+    final url = 'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey'\;
+    final body = {
+      'contents': _history,
+      'tools': [_buildTools()],
+      'generationConfig': {
+        'temperature': 0.4,
+        'maxOutputTokens': 2048,
+      },
+      'systemInstruction': {
+        'parts': [{'text': 'أنت BIMEX AI، مساعد ذكي. استخدم الأدوات المتاحة.'}]
+      }
+    };
+
+    final res = await http.post(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception('API error (${res.statusCode}): ${res.body}');
+    }
+
+    final data = jsonDecode(res.body);
+    if (data['candidates'] == null || (data['candidates'] as List).isEmpty) {
+      throw Exception('No candidates returned');
+    }
+
+    final candidate = data['candidates'][0];
+    final content = candidate['content'];
+    if (content == null) throw Exception('No content in response');
+
+    // إضافة الرد الخام (بالـ thought_signature) للتاريخ
+    _history.add(content);
+
+    final parts = content['parts'] as List? ?? [];
+    String? text;
+    final functionCalls = <GeminiFunctionCall>[];
+
+    for (final part in parts) {
+      if (part.containsKey('text')) {
+        text = part['text'];
+      }
+      if (part.containsKey('functionCall')) {
+        final fc = part['functionCall'];
+        functionCalls.add(GeminiFunctionCall(
+          fc['name'],
+          Map<String, dynamic>.from(fc['args'] ?? {}),
+          Map<String, dynamic>.from(part), // نحفظ الـ part كامل
+        ));
       }
     }
 
-    // 2. لو مفيش موديل نشط، هنلف على القائمة
-    final errors = <String>[];
-    for (final modelName in _models) {
-      try {
-        final model = GenerativeModel(
-          model: modelName,
-          apiKey: _apiKey,
-          systemInstruction: Content.system(_systemPrompt),
-          generationConfig: GenerationConfig(temperature: 0.4, maxOutputTokens: 2048),
-          tools: [_buildTools()],
-        );
-
-        final chat = _history.isEmpty ? model.startChat() : model.startChat(history: _history);
-        final response = await chat.sendMessage(content).timeout(const Duration(seconds: 30));
-
-        _chat = chat;
-        _activeModelName = modelName;
-        _history.add(content);
-        _history.add(Content.text(response.text ?? ''));
-        return response;
-      } catch (e) {
-        errors.add('$modelName: ${e.toString().split('\n').first}');
-      }
-    }
-
-    throw Exception('كل الموديلات فشلت:\n${errors.join('\n')}');
+    return GeminiResponse(text, functionCalls, Map<String, dynamic>.from(content));
   }
 
-  Future<GenerateContentResponse> sendFunctionResults(List<Part> parts) async {
-    if (_chat == null) throw Exception('No active chat session');
-    try {
-      return await _chat!.sendMessage(Content.multi(parts));
-    } catch (e) {
-      throw Exception('فشل إرسال نتيجة الأداة: $e');
-    }
+  Map<String, dynamic> _buildTools() {
+    return {
+      'functionDeclarations': [
+        {
+          'name': 'list_files',
+          'description': 'اعرض الملفات في مجلد معين',
+          'parameters': {
+            'type': 'OBJECT',
+            'properties': {
+              'directory': {'type': 'STRING', 'description': 'مسار المجلد'}
+            }
+          }
+        },
+        {
+          'name': 'read_file',
+          'description': 'اقرأ محتوى ملف نصي',
+          'parameters': {
+            'type': 'OBJECT',
+            'properties': {
+              'path': {'type': 'STRING', 'description': 'مسار الملف'}
+            },
+            'required': ['path']
+          }
+        },
+        {
+          'name': 'edit_file',
+          'description': 'عدل أو اكتب محتوى في ملف',
+          'parameters': {
+            'type': 'OBJECT',
+            'properties': {
+              'path': {'type': 'STRING'},
+              'content': {'type': 'STRING'}
+            },
+            'required': ['path', 'content']
+          }
+        },
+        {
+          'name': 'get_app_status',
+          'description': 'اعرف حالة السيرفر الحالية',
+          'parameters': {'type': 'OBJECT', 'properties': {}}
+        },
+      ]
+    };
   }
 
   void reset() {
     _history.clear();
-    _chat = null;
-    _activeModelName = null;
   }
 }
