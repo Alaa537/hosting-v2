@@ -1,6 +1,11 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:flutter_highlight/themes/monokai-sublime.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/gemini_service.dart';
@@ -39,11 +44,12 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
       _initError = e.toString();
     }
     _messages.add(_Message(
-      text: 'مرحباً بك في BIMEX AI 🤖\n\n'
-          'يمكنني الآن قراءة وتعديل ملفاتك مباشرة. جرب:\n'
-          '• "اعرض لي ملفات المجلد الرئيسي"\n'
-          '• "اقرأ ملف requirements.txt"\n'
-          '• "عدل ملف requirements.txt وأضف requests"',
+      text: 'أهلاً بك في **BIMEX AI** 🤖\n\n'
+          'مساعدك الذكي لإدارة السيرفر. يمكنك سؤالي عن:\n'
+          '• قراءة وتعديل الملفات.\n'
+          '• حالة السيرفر والسجلات.\n'
+          '• كتابة وشرح أكواد Python.\n\n'
+          '*جرب أن تطلب مني شيئاً!*',
       isUser: false,
     ));
   }
@@ -157,7 +163,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
               child: const Icon(Icons.auto_awesome, color: Colors.black, size: 16),
             ),
             const SizedBox(width: 12),
-            const Text('BIMEX AI', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Text('BIMEX AI', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1)),
           ],
         ),
       ),
@@ -230,8 +236,34 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
                 color: isUser ? C.primary.withValues(alpha: .15) : C.surface.withValues(alpha: .85),
                 borderRadius: BorderRadius.only(topLeft: const Radius.circular(20), topRight: const Radius.circular(20), bottomLeft: Radius.circular(isUser ? 20 : 4), bottomRight: Radius.circular(isUser ? 4 : 20)),
                 border: Border.all(color: isUser ? C.primary.withValues(alpha: .4) : C.border),
+                boxShadow: isUser ? [] : [BoxShadow(color: Colors.black.withValues(alpha: .2), blurRadius: 10, offset: const Offset(0, 4))],
               ),
-              child: SelectableText(msg.text, style: TextStyle(color: isUser ? C.primary : Colors.white, fontSize: 14.5, height: 1.6)),
+              child: isUser
+                  ? SelectableText(msg.text, style: const TextStyle(color: C.primary, fontSize: 14.5, height: 1.6, fontWeight: FontWeight.w600))
+                  : MarkdownBody(
+                      data: msg.text,
+                      selectable: true,
+                      onTapLink: (text, url, title) async {
+                        if (url != null) {
+                          final uri = Uri.parse(url);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          }
+                        }
+                      },
+                      styleSheet: MarkdownStyleSheet(
+                        p: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.6),
+                        h1: const TextStyle(color: C.primary, fontSize: 20, fontWeight: FontWeight.bold),
+                        h2: const TextStyle(color: C.primary, fontSize: 18, fontWeight: FontWeight.bold),
+                        a: const TextStyle(color: C.accent, decoration: TextDecoration.underline),
+                        code: const TextStyle(backgroundColor: Colors.transparent, color: Colors.white, fontFamily: 'monospace'),
+                        codeblockDecoration: BoxDecoration(color: const Color(0xFF1A1A24), borderRadius: BorderRadius.circular(8)),
+                        blockquoteDecoration: BoxDecoration(color: C.surfaceHi, borderRadius: BorderRadius.circular(8), border: const Border(left: BorderSide(color: C.primary, width: 4))),
+                      ),
+                      builders: {
+                        'code': _CodeElementBuilder(),
+                      },
+                    ),
             ),
           ),
           if (isUser) ...[
@@ -266,20 +298,41 @@ class _AIAssistantScreenState extends State<AIAssistantScreen>
         children: [
           Expanded(
             child: Container(
-              decoration: BoxDecoration(color: C.surface, borderRadius: BorderRadius.circular(24), border: Border.all(color: C.primary.withValues(alpha: .3))),
+              decoration: BoxDecoration(
+                color: C.surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: C.primary.withValues(alpha: .3)),
+                boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .05), blurRadius: 10)],
+              ),
               child: TextField(
                 controller: _controller,
                 enabled: !_isLoading && _initError == null,
                 maxLines: null,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
-                style: const TextStyle(fontSize: 14),
-                decoration: const InputDecoration(hintText: 'اطلب من BIMEX AI قراءة أو تعديل ملف...', hintStyle: TextStyle(color: C.muted), isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
+                style: const TextStyle(fontSize: 14.5, color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'اسأل BIMEX AI أي شيء...',
+                  hintStyle: TextStyle(color: C.muted, fontSize: 13),
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                ),
               ),
             ),
           ),
           const SizedBox(width: 8),
-          Container(decoration: BoxDecoration(gradient: const LinearGradient(colors: [C.primary, C.accent]), shape: BoxShape.circle, boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 12)]), child: IconButton(onPressed: _isLoading ? null : _send, icon: const Icon(Icons.send_rounded, color: Colors.black))),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [C.primary, C.accent]),
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 12)],
+            ),
+            child: IconButton(
+              onPressed: _isLoading ? null : _send,
+              icon: const Icon(Icons.send_rounded, color: Colors.black),
+            ),
+          ),
         ],
       ),
     );
@@ -290,4 +343,63 @@ class _Message {
   final String text;
   final bool isUser;
   _Message({required this.text, required this.isUser});
+}
+
+/// باني مخصص للأكواد لتلوينها وإضافة زر النسخ
+class _CodeElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final code = element.textContent;
+    final lang = element.attributes['class']?.replaceFirst('language-', '') ?? 'dart';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A24),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: C.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0D0D1A),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(lang.toUpperCase(), style: const TextStyle(color: C.primary, fontSize: 10, fontWeight: FontWeight.bold)),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: code));
+                    ScaffoldMessenger.of(preferredStyle?.inherit == true ? null : null).showSnackBar(const SnackBar(content: Text('تم نسخ الكود'), duration: Duration(seconds: 1)));
+                  },
+                  child: const Row(
+                    children: [
+                      Icon(Icons.copy, color: C.muted, size: 14),
+                      SizedBox(width: 4),
+                      Text('نسخ', style: TextStyle(color: C.muted, fontSize: 10)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: HighlightView(
+              code,
+              language: lang,
+              theme: monokaiSublimeTheme,
+              padding: const EdgeInsets.all(12),
+              textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
