@@ -31,10 +31,10 @@ class SecurityService {
   static const _channel = MethodChannel('hosting/security');
 
   // استخدام GitHub API (بدون كاش) كخيار أول
-  static const _apiUrl = 'https://api.github.com/repos/Alaa537/hosting-sec-v2/contents/signature.json'\;
+  static const _apiUrl = 'https://api.github.com/repos/Alaa537/hosting-sec-v2/contents/signature.json';
   
   // كخيار احتياطي لو الـ API فشل
-  static const _fallbackUrl = 'https://cdn.jsdelivr.net/gh/Alaa537/hosting-sec-v2@main/signature.json'\;
+  static const _fallbackUrl = 'https://cdn.jsdelivr.net/gh/Alaa537/hosting-sec-v2@main/signature.json';
 
   static Future<T?> _native<T>(String method) async {
     try {
