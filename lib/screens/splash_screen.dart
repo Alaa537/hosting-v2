@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../models/bootstrap.dart';
@@ -30,6 +31,13 @@ class _SplashScreenState extends State<SplashScreen>
   late final AnimationController _logoCtrl;
 
   bool _bootstrapChecked = false;
+
+  // حقول التحقق من الإصدار (التي كانت مفقودة)
+  bool _isVersionBlocked = false;
+  bool _isForceUpdate = false;
+  String? _versionMessage;
+  String? _updateUrl;
+
   SecurityResult? _blocked;
   double _progress = 0;
   String _status = 'تهيئة الحماية';
@@ -58,10 +66,35 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) return;
       setState(() => _blocked = null);
     };
-    
-    // نبدأ بفحص الأمان
+
     _runSecurityCheck();
     SecurityMonitor.I.start();
+  }
+
+  @override
+  void dispose() {
+    _bgCtrl.dispose();
+    _ringCtrl.dispose();
+    _logoCtrl.dispose();
+    SecurityMonitor.I.onFailure = null;
+    SecurityMonitor.I.onRecovered = null;
+    super.dispose();
+  }
+
+  Future<void> _simulateSteps() async {
+    const steps = [
+      ('تهيئة الحماية', 0.10, 400),
+      ('التحقق من التوقيع', 0.35, 600),
+      ('كشف التهديدات', 0.55, 500),
+      ('الاتصال بالسيرفر', 0.75, 600),
+      ('تجهيز الواجهة', 0.95, 400),
+      ('جاهز', 1.00, 300),
+    ];
+    for (final s in steps) {
+      if (!mounted) return;
+      setState(() { _status = s.$1; _progress = s.$2; });
+      await Future.delayed(Duration(milliseconds: s.$3));
+    }
   }
 
   Future<void> _runSecurityCheck() async {
@@ -95,37 +128,10 @@ class _SplashScreenState extends State<SplashScreen>
           }
         }
       } catch (e) {
-        // نتجاهل خطأ فحص الإصدار - التطبيق يكمل
         debugPrint('checkVersion failed: $e');
       }
     } catch (e) {
       if (mounted) setState(() => _blocked = SecurityResult.error(e.toString()));
-    }
-  }
-
-  @override
-  void dispose() {
-    _bgCtrl.dispose();
-    _ringCtrl.dispose();
-    _logoCtrl.dispose();
-    SecurityMonitor.I.onFailure = null;
-    SecurityMonitor.I.onRecovered = null;
-    super.dispose();
-  }
-
-  Future<void> _simulateSteps() async {
-    const steps = [
-      ('تهيئة الحماية', 0.10, 400),
-      ('التحقق من التوقيع', 0.35, 600),
-      ('كشف التهديدات', 0.55, 500),
-      ('الاتصال بالسيرفر', 0.75, 600),
-      ('تجهيز الواجهة', 0.95, 400),
-      ('جاهز', 1.00, 300),
-    ];
-    for (final s in steps) {
-      if (!mounted) return;
-      setState(() { _status = s.$1; _progress = s.$2; });
-      await Future.delayed(Duration(milliseconds: s.$3));
     }
   }
 
@@ -220,7 +226,7 @@ class _SplashScreenState extends State<SplashScreen>
                   'HOST PANEL',
                   style: TextStyle(
                       fontSize: 34, fontWeight: FontWeight.w900,
-                      letterSpacing: 8, color: Colors.white),
+                      letterSpacing: 5, color: Colors.white),
                 ),
               ).animate().fadeIn(duration: 700.ms, delay: 300.ms).slideY(begin: .3, end: 0, curve: Curves.easeOutCubic),
               const SizedBox(height: 6),
@@ -294,7 +300,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _blob(double cx, double cy, double radius, Color color) {
+  Widget _blob({required double cx, required double cy, required double radius, required Color color}) {
     return Positioned(
       left: cx - radius, top: cy - radius,
       child: Container(
@@ -309,7 +315,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _logoMark() {
     return Container(
-      width: 140, height: 140,
+      width: 120, height: 120,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const LinearGradient(colors: [C.primary, C.accent], begin: Alignment.topLeft, end: Alignment.bottomRight),
@@ -326,7 +332,7 @@ class _SplashScreenState extends State<SplashScreen>
     ).animate(onPlay: (c) => c.repeat(reverse: true)).boxShadow(
           begin: BoxShadow(color: C.primary.withValues(alpha: .4), blurRadius: 30, spreadRadius: 4),
           end: BoxShadow(color: C.accent.withValues(alpha: .7), blurRadius: 55, spreadRadius: 10),
-          duration: 1800.ms, curve: Curves.easeInOut,
+          duration: 2200.ms, curve: Curves.easeInOut,
         );
   }
 
