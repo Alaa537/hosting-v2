@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
+import 'package:cryptography/cryptography.dart' as crypto_gcm;
 import '../models/models.dart';
 import '../models/bootstrap.dart';
 import '../models/app_models.dart';
@@ -123,6 +124,43 @@ class ApiClient {
     return value;
   }
 
+
+  /// يفك تشفير AES-256-GCM من {enc, ts}
+  Future<Map<String, dynamic>> _decryptAesGcm(String encB64, int ts) async {
+    // المفتاح المشتق: SHA-256(APP_SECRET) → 32 بايت
+    final keyBytes = sha256.convert(utf8.encode(_appSecret)).bytes;
+    final secretKey = crypto_gcm.SecretKey(keyBytes);
+
+    // فك Base64
+    final encData = base64Decode(encB64);
+
+    // هيكل: nonce(12) || ciphertext || tag(16)
+    if (encData.length < 12 + 16) {
+      throw HostingException(400,
+          {'error': 'Invalid encrypted payload length'}, '');
+    }
+
+    final nonce = encData.sublist(0, 12);
+    final tagStart = encData.length - 16;
+    final ciphertext = encData.sublist(12, tagStart);
+    final tag = encData.sublist(tagStart);
+
+    final algorithm = crypto_gcm.AesGcm.with256bits();
+    final secretBox = crypto_gcm.SecretBox(
+      ciphertext,
+      nonce: nonce,
+      mac: crypto_gcm.Mac(tag),
+    );
+
+    try {
+      final plaintext = await algorithm.decrypt(secretBox, secretKey: secretKey);
+      return jsonDecode(utf8.decode(plaintext)) as Map<String, dynamic>;
+    } on crypto_gcm.SecretBoxAuthenticationError {
+      throw HostingException(400,
+          {'error': 'Tampered response (AES-GCM auth failed)'}, '');
+    }
+  }
+
   Future<dynamic> _decode(http.Response r) async {
     if (r.statusCode >= 400) {
       dynamic detail;
@@ -152,7 +190,16 @@ class ApiClient {
     dynamic parsed;
     try { parsed = jsonDecode(r.body); } catch (_) { return r.body; }
 
-    if (parsed is Map && parsed.containsKey('sig') && parsed.containsKey('ts') && parsed.containsKey('data')) {
+    // ① الشكل الجديد: AES-GCM مشفر
+    if (parsed is Map && parsed.containsKey('enc') && parsed.containsKey('ts')) {
+      final enc = parsed['enc'] as String;
+      final ts = parsed['ts'] as int;
+      return await _decryptAesGcm(enc, ts);
+    }
+
+    // ② الشكل القديم: HMAC موقّع (احتياطي)
+    if (parsed is Map && parsed.containsKey('sig') &&
+        parsed.containsKey('ts') && parsed.containsKey('data')) {
       final data = parsed['data'];
       final sig = parsed['sig'] as String;
       final ts = parsed['ts'];
@@ -164,8 +211,7 @@ class ApiClient {
 
       if (expected.toLowerCase() != sig.toLowerCase()) {
         throw HostingException(400,
-            {'error': 'Tampered response (HMAC mismatch)'},
-            r.request?.url.toString() ?? '');
+            {'error': 'Tampered response (HMAC mismatch)'}, '');
       }
       return data;
     }
