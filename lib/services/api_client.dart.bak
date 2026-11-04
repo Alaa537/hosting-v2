@@ -1,9 +1,10 @@
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:crypto/crypto.dart';
+import 'package:crypto/crypto.dart' show sha256, Hmac;
 import 'package:cryptography/cryptography.dart' as crypto_gcm;
 import '../models/models.dart';
 import '../models/bootstrap.dart';
@@ -124,60 +125,40 @@ class ApiClient {
     return value;
   }
 
-
-
-  /// يفك تشفير AES-256-GCM (مواصفات السيرفر الرسمية)
-  /// المدخل: {enc: base64(nonce(12) || ciphertext || tag(16)), ts: unix_seconds}
+  /// فك تشفير AES-256-GCM (مواصفات السيرفر)
   Future<Map<String, dynamic>> _decryptAesGcm(String encB64, int ts) async {
-    // ① فحص الـ timestamp (5 دقائق tolerance)
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if ((now - ts).abs() > 300) {
-      throw HostingException(400, {
-        'error': 'Response expired (replay attack?)',
-        'diff_seconds': (now - ts).abs(),
-      }, '');
+      throw HostingException(400, {'error': 'Response expired (replay attack?)'}, '');
     }
-
-    // ② اشتق المفتاح: SHA-256(APP_SECRET) → 32 بايت
     if (_appSecret.isEmpty) {
       throw HostingException(500, {'error': 'APP_SECRET not configured'}, '');
     }
+
     final keyBytes = sha256.convert(utf8.encode(_appSecret)).bytes;
-    final secretKey = gcm.SecretKey(keyBytes);
+    final secretKey = crypto_gcm.SecretKey(keyBytes);
 
-    // ③ فك base64
-    List<int> raw;
-    try {
-      raw = base64Decode(encB64);
-    } catch (_) {
-      throw HostingException(400, {'error': 'Invalid base64 in enc'}, '');
-    }
-
-    // ④ فحص الحد الأدنى: 12 (nonce) + 16 (tag) = 28
+    final raw = base64Decode(encB64);
     if (raw.length < 28) {
       throw HostingException(400, {'error': 'Encrypted payload too short'}, '');
     }
 
-    // ⑤ استخراج الأجزاء
     final nonce = raw.sublist(0, 12);
     final tag = raw.sublist(raw.length - 16);
     final ciphertext = raw.sublist(12, raw.length - 16);
 
-    // ⑥ فك التشفير (AES-GCM يتحقق من الـ tag تلقائياً)
-    final algorithm = gcm.AesGcm.with256bits();
-    final secretBox = gcm.SecretBox(
+    final algorithm = crypto_gcm.AesGcm.with256bits();
+    final secretBox = crypto_gcm.SecretBox(
       ciphertext,
       nonce: nonce,
-      mac: gcm.Mac(tag),
+      mac: crypto_gcm.Mac(tag),
     );
 
     try {
       final plaintext = await algorithm.decrypt(secretBox, secretKey: secretKey);
-      final jsonStr = utf8.decode(plaintext);
-      return jsonDecode(jsonStr) as Map<String, dynamic>;
-    } on gcm.SecretBoxAuthenticationError {
-      throw HostingException(400,
-          {'error': 'Tampered response (AES-GCM auth tag mismatch)'}, '');
+      return jsonDecode(utf8.decode(plaintext)) as Map<String, dynamic>;
+    } on crypto_gcm.SecretBoxAuthenticationError {
+      throw HostingException(400, {'error': 'Tampered response (AES-GCM auth tag mismatch)'}, '');
     } catch (e) {
       throw HostingException(400, {'error': 'Decryption failed: $e'}, '');
     }
@@ -212,38 +193,27 @@ class ApiClient {
     dynamic parsed;
     try { parsed = jsonDecode(r.body); } catch (_) { return r.body; }
 
-    // ① الشكل الجديد: AES-GCM مشفر
-    // ① الشكل الجديد: AES-256-GCM مشفر
-    if (parsed is Map &&
-        parsed.containsKey('enc') &&
-        parsed.containsKey('ts')) {
-      return await _decryptAesGcm(
-        parsed['enc'] as String,
-        parsed['ts'] as int,
-      );
+    // ① AES-256-GCM مشفر
+    if (parsed is Map && parsed.containsKey('enc') && parsed.containsKey('ts')) {
+      return await _decryptAesGcm(parsed['enc'] as String, parsed['ts'] as int);
     }
 
-    // ② الشكل القديم: HMAC موقّع (احتياطي — معطّل حالياً)
-    if (parsed is Map &&
-        parsed.containsKey('sig') &&
-        parsed.containsKey('ts') &&
-        parsed.containsKey('data')) {
+    // ② HMAC موقع (احتياطي)
+    if (parsed is Map && parsed.containsKey('sig') &&
+        parsed.containsKey('ts') && parsed.containsKey('data')) {
       final ts = parsed['ts'] as int;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       if ((now - ts).abs() > 300) {
         throw HostingException(400, {'error': 'Response expired'}, '');
       }
-
       final data = parsed['data'];
       final sig = parsed['sig'] as String;
       final canonical = jsonEncode(_sortKeysRecursive(data));
       final msg = utf8.encode(canonical + ts.toString());
       final hmac = Hmac(sha256, utf8.encode(_appSecret));
       final expected = hmac.convert(msg).toString();
-
       if (expected.toLowerCase() != sig.toLowerCase()) {
-        throw HostingException(400,
-            {'error': 'Tampered response (HMAC mismatch)'}, '');
+        throw HostingException(400, {'error': 'Tampered response (HMAC mismatch)'}, '');
       }
       return data;
     }
@@ -262,25 +232,14 @@ class ApiClient {
       final r = await _http.post(_u('/auth/refresh'),
           headers: {..._headers, 'Content-Type': 'application/json'},
           body: jsonEncode({'refresh_token': rt}));
-      if (r.statusCode >= 400) {
-        setTokens();
-        completer.complete(false);
-        return false;
-      }
+      if (r.statusCode >= 400) { setTokens(); completer.complete(false); return false; }
       final data = await _decode(r) as Map<String, dynamic>;
-      setTokens(
-        access: data['token'],
-        refresh: data['refresh_token'],
-        expiresInSeconds: data['expires_in'],
-      );
+      setTokens(access: data['token'], refresh: data['refresh_token'],
+          expiresInSeconds: data['expires_in']);
       completer.complete(true);
       return true;
-    } catch (_) {
-      completer.complete(false);
-      return false;
-    } finally {
-      _refreshing = null;
-    }
+    } catch (_) { completer.complete(false); return false; }
+    finally { _refreshing = null; }
   }
 
   Future<dynamic> _send(String method, String path,
@@ -291,46 +250,32 @@ class ApiClient {
       http.Response r;
       switch (method) {
         case 'GET':
-          r = await _http.get(_u(path, q), headers: _headers)
-              .timeout(const Duration(seconds: 15));
-          break;
+          r = await _http.get(_u(path, q), headers: _headers).timeout(const Duration(seconds: 15)); break;
         case 'POST':
           r = await _http.post(_u(path, q),
               headers: {..._headers, 'Content-Type': 'application/json'},
-              body: body == null ? null : jsonEncode(body))
-              .timeout(const Duration(seconds: 15));
-          break;
+              body: body == null ? null : jsonEncode(body)).timeout(const Duration(seconds: 15)); break;
         case 'PUT':
           r = await _http.put(_u(path, q),
               headers: {..._headers, 'Content-Type': 'application/json'},
-              body: body == null ? null : jsonEncode(body))
-              .timeout(const Duration(seconds: 15));
-          break;
+              body: body == null ? null : jsonEncode(body)).timeout(const Duration(seconds: 15)); break;
         case 'DELETE':
           r = await _http.delete(_u(path, q),
-              headers: body == null ? _headers
-                  : {..._headers, 'Content-Type': 'application/json'},
-              body: body == null ? null : jsonEncode(body))
-              .timeout(const Duration(seconds: 15));
-          break;
-        default:
-          throw ArgumentError('method');
+              headers: body == null ? _headers : {..._headers, 'Content-Type': 'application/json'},
+              body: body == null ? null : jsonEncode(body)).timeout(const Duration(seconds: 15)); break;
+        default: throw ArgumentError('method');
       }
       return await _decode(r);
     } on TokenExpiredException {
-      if (retry && await refresh()) {
-        return _send(method, path, body: body, q: q, retry: false);
-      }
+      if (retry && await refresh()) return _send(method, path, body: body, q: q, retry: false);
       rethrow;
     }
   }
 
   Future<dynamic> _get(String p, {Map<String, dynamic>? q}) => _send('GET', p, q: q);
-  Future<dynamic> _post(String p, {Object? body, Map<String, dynamic>? q}) =>
-      _send('POST', p, body: body, q: q);
+  Future<dynamic> _post(String p, {Object? body, Map<String, dynamic>? q}) => _send('POST', p, body: body, q: q);
   Future<dynamic> _put(String p, {Object? body}) => _send('PUT', p, body: body);
-  Future<dynamic> _del(String p, {Map<String, dynamic>? q, Object? body}) =>
-      _send('DELETE', p, q: q, body: body);
+  Future<dynamic> _del(String p, {Map<String, dynamic>? q, Object? body}) => _send('DELETE', p, q: q, body: body);
 
   // ═══════════════ CHECK VERSION ═══════════════
   Future<Map<String, dynamic>> checkVersion() async {
@@ -340,214 +285,106 @@ class ApiClient {
       'signature': _appSignature ?? '',
       'device_id': _deviceId ?? '',
     };
-    final r = await _http.get(
-      _u('/client/check-version', q),
-      headers: {
-        'Accept': 'application/json',
-        'X-App-Version': '$_appVersion',
-        if (_appSignature != null) 'X-App-Signature': _appSignature!,
-        if (_deviceId != null) 'X-Device-Id': _deviceId!,
-      },
-    ).timeout(const Duration(seconds: 10));
+    final r = await _http.get(_u('/client/check-version', q), headers: {
+      'Accept': 'application/json',
+      'X-App-Version': '$_appVersion',
+      if (_appSignature != null) 'X-App-Signature': _appSignature!,
+      if (_deviceId != null) 'X-Device-Id': _deviceId!,
+    }).timeout(const Duration(seconds: 10));
     if (r.statusCode != 200) {
-      throw HostingException(r.statusCode, 'Version check failed',
-          r.request?.url.toString() ?? '');
+      throw HostingException(r.statusCode, 'Version check failed', r.request?.url.toString() ?? '');
     }
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
   // ═══════════════ AUTH ═══════════════
-  Future<Map<String, dynamic>> health() async =>
-      Map<String, dynamic>.from(await _get('/health'));
+  Future<Map<String, dynamic>> health() async => Map<String, dynamic>.from(await _get('/health'));
 
   Future<Map<String, dynamic>> login(String u, String p) async {
-    final body = <String, dynamic>{
-      'username': u,
-      'password': p,
-      'device_id': _deviceId,
-      'platform': Platform.operatingSystem,
-      'app_version': '$_appVersion',
-    };
+    final body = <String, dynamic>{'username': u, 'password': p,
+      'device_id': _deviceId, 'platform': Platform.operatingSystem, 'app_version': '$_appVersion'};
     final r = await _send('POST', '/auth/login', body: body, retry: false);
     final m = Map<String, dynamic>.from(r);
-    if (m['token'] != null) {
-      setTokens(
-        access: m['token'],
-        refresh: m['refresh_token'],
-        expiresInSeconds: m['expires_in'],
-      );
-    }
+    if (m['token'] != null) setTokens(access: m['token'], refresh: m['refresh_token'], expiresInSeconds: m['expires_in']);
     return m;
   }
 
   Future<Map<String, dynamic>> register(String u, String p, String invite) async {
-    final body = <String, dynamic>{
-      'username': u,
-      'password': p,
-      'invite': invite,
-      'device_id': _deviceId,
-      'platform': Platform.operatingSystem,
-      'app_version': '$_appVersion',
-    };
+    final body = <String, dynamic>{'username': u, 'password': p, 'invite': invite,
+      'device_id': _deviceId, 'platform': Platform.operatingSystem, 'app_version': '$_appVersion'};
     final r = await _send('POST', '/auth/register', body: body, retry: false);
     final m = Map<String, dynamic>.from(r);
-    if (m['token'] != null) {
-      setTokens(
-        access: m['token'],
-        refresh: m['refresh_token'],
-        expiresInSeconds: m['expires_in'],
-      );
-    }
+    if (m['token'] != null) setTokens(access: m['token'], refresh: m['refresh_token'], expiresInSeconds: m['expires_in']);
     return m;
   }
 
-  Future<void> logout() async {
-    try {
-      await _post('/auth/logout', body: {'refresh_token': _refreshToken});
-    } finally {
-      setTokens();
-    }
-  }
-
-  Future<void> logoutAll() async {
-    try { await _post('/auth/logout-all'); }
-    finally { setTokens(); }
-  }
-
-  Future<void> changePassword(String o, String n) =>
-      _post('/me/password', body: {'old_password': o, 'new_password': n});
-
-  Future<User> me() async =>
-      User.fromJson(Map<String, dynamic>.from(await _get('/me')));
-
-  Future<Map<String, dynamic>> sessions() async =>
-      Map<String, dynamic>.from(await _get('/auth/sessions'));
-
-  Future<void> revokeSession(int id) =>
-      _post('/auth/sessions/revoke', body: {'session_id': id});
-
-  Future<Map<String, dynamic>> deviceLock() async =>
-      Map<String, dynamic>.from(await _post('/auth/device-lock', body: {
-        if (_deviceId != null) 'device_id': _deviceId,
-        'platform': Platform.operatingSystem,
-        'app_version': '$_appVersion',
-      }));
-
+  Future<void> logout() async { try { await _post('/auth/logout', body: {'refresh_token': _refreshToken}); } finally { setTokens(); } }
+  Future<void> logoutAll() async { try { await _post('/auth/logout-all'); } finally { setTokens(); } }
+  Future<void> changePassword(String o, String n) => _post('/me/password', body: {'old_password': o, 'new_password': n});
+  Future<User> me() async => User.fromJson(Map<String, dynamic>.from(await _get('/me')));
+  Future<Map<String, dynamic>> sessions() async => Map<String, dynamic>.from(await _get('/auth/sessions'));
+  Future<void> revokeSession(int id) => _post('/auth/sessions/revoke', body: {'session_id': id});
+  Future<Map<String, dynamic>> deviceLock() async => Map<String, dynamic>.from(await _post('/auth/device-lock', body: {
+    if (_deviceId != null) 'device_id': _deviceId, 'platform': Platform.operatingSystem, 'app_version': '$_appVersion'}));
   Future<Map<String, dynamic>> deviceCheck(String deviceId) async =>
-      Map<String, dynamic>.from(
-          await _get('/auth/device-lock', q: {'device_id': deviceId}));
-
-  Future<Map<String, dynamic>> myDevices() async =>
-      Map<String, dynamic>.from(await _get('/me/devices'));
+      Map<String, dynamic>.from(await _get('/auth/device-lock', q: {'device_id': deviceId}));
+  Future<Map<String, dynamic>> myDevices() async => Map<String, dynamic>.from(await _get('/me/devices'));
 
   // ═══════════════ BOOTSTRAP ═══════════════
-  Future<Bootstrap> bootstrap() async {
-    final j = await _get('/client/bootstrap', q: {
-      'device_id': _deviceId ?? '',
-      'app_version': '$_appVersion',
-      'platform': Platform.operatingSystem,
-    });
-    return Bootstrap.fromJson(Map<String, dynamic>.from(j));
-  }
-
-  Future<void> dismissModal(int id) =>
-      _post('/client/modal-dismiss', body: {'modal_id': id});
+  Future<Bootstrap> bootstrap() async => Bootstrap.fromJson(Map<String, dynamic>.from(await _get('/client/bootstrap', q: {
+    'device_id': _deviceId ?? '', 'app_version': '$_appVersion', 'platform': Platform.operatingSystem})));
+  Future<void> dismissModal(int id) => _post('/client/modal-dismiss', body: {'modal_id': id});
 
   // ═══════════════ USER INFO ═══════════════
-  Future<Map<String, dynamic>> usage() async =>
-      Map<String, dynamic>.from(await _get('/me/usage'));
-
+  Future<Map<String, dynamic>> usage() async => Map<String, dynamic>.from(await _get('/me/usage'));
   Future<Map<String, dynamic>> activity({int limit = 50}) async =>
       Map<String, dynamic>.from(await _get('/me/activity', q: {'limit': limit}));
-
   Future<Map<String, dynamic>> alerts({int limit = 50, bool unreadOnly = false}) async =>
-      Map<String, dynamic>.from(await _get('/me/alerts',
-          q: {'limit': limit, 'unread_only': unreadOnly}));
-
-  Future<void> alertsRead([List<int>? ids]) =>
-      _post('/me/alerts/read', body: {'ids': ids});
+      Map<String, dynamic>.from(await _get('/me/alerts', q: {'limit': limit, 'unread_only': unreadOnly}));
+  Future<void> alertsRead([List<int>? ids]) => _post('/me/alerts/read', body: {'ids': ids});
 
   // ═══════════════ APP ═══════════════
-  Future<AppStatus> appStatus() async =>
-      AppStatus.fromJson(Map<String, dynamic>.from(await _get('/app')));
-
-  Future<String> appRead() async {
-    final r = await _get('/app/file');
-    if (r is Map) return r['content'] as String? ?? '';
-    return r.toString();
-  }
-
-  Future<void> appWrite(String content) =>
-      _post('/app/file', body: {'content': content});
-
+  Future<AppStatus> appStatus() async => AppStatus.fromJson(Map<String, dynamic>.from(await _get('/app')));
+  Future<String> appRead() async { final r = await _get('/app/file'); if (r is Map) return r['content'] as String? ?? ''; return r.toString(); }
+  Future<void> appWrite(String content) => _post('/app/file', body: {'content': content});
   Future<void> appStart() => _post('/app/start');
   Future<void> appStop() => _post('/app/stop');
   Future<void> appRestart() => _post('/app/restart');
   Future<void> appKill() => _post('/app/kill');
-  Future<void> appCommand(String cmd) =>
-      _post('/app/command', body: {'command': cmd});
-
+  Future<void> appCommand(String cmd) => _post('/app/command', body: {'command': cmd});
   Future<Map<String, dynamic>> appUpload(File file, {File? requirements}) async {
     final req = http.MultipartRequest('POST', _u('/app/upload'));
     req.headers.addAll(_headers);
-    req.files.add(await http.MultipartFile.fromPath(
-        'file', file.path,
-        filename: file.uri.pathSegments.last));
+    req.files.add(await http.MultipartFile.fromPath('file', file.path, filename: file.uri.pathSegments.last));
     if (requirements != null && await requirements.exists()) {
-      req.files.add(await http.MultipartFile.fromPath(
-          'requirements', requirements.path,
-          filename: requirements.uri.pathSegments.last));
+      req.files.add(await http.MultipartFile.fromPath('requirements', requirements.path, filename: requirements.uri.pathSegments.last));
     }
     final streamed = await req.send();
-    final r = await http.Response.fromStream(streamed);
-    return Map<String, dynamic>.from(await _decode(r) ?? {});
+    return Map<String, dynamic>.from(await _decode(await http.Response.fromStream(streamed)) ?? {});
   }
-
   Future<Map<String, dynamic>> botLogs(String f, {int lines = 200}) async =>
-      Map<String, dynamic>.from(
-          await _get('/bots/$f/logs', q: {'lines': lines}));
+      Map<String, dynamic>.from(await _get('/bots/$f/logs', q: {'lines': lines}));
 
   // ═══════════════ FILES ═══════════════
   Future<List<Map<String, dynamic>>> listFiles({String directory = '/'}) async {
     final l = await _get('/files', q: {'directory': directory}) as List;
     return l.cast<Map<String, dynamic>>();
   }
-
   Future<Map<String, dynamic>> readFileRaw(String file) async =>
       Map<String, dynamic>.from(await _get('/files/content', q: {'file': file}));
-
   Future<void> writeFileRaw(String file, String content) =>
       _post('/files/write', body: {'file': file, 'content': content});
-
-  Future<Map<String, dynamic>> uploadFile(File local,
-      {String directory = '/'}) async {
-    final req = http.MultipartRequest('POST',
-        _u('/files/upload', {'directory': directory}));
+  Future<Map<String, dynamic>> uploadFile(File local, {String directory = '/'}) async {
+    final req = http.MultipartRequest('POST', _u('/files/upload', {'directory': directory}));
     req.headers.addAll(_headers);
-    req.files.add(await http.MultipartFile.fromPath(
-        'f', local.path, filename: local.uri.pathSegments.last));
+    req.files.add(await http.MultipartFile.fromPath('f', local.path, filename: local.uri.pathSegments.last));
     final streamed = await req.send();
-    final r = await http.Response.fromStream(streamed);
-    return Map<String, dynamic>.from(await _decode(r) ?? {});
+    return Map<String, dynamic>.from(await _decode(await http.Response.fromStream(streamed)) ?? {});
   }
-
-  Future<String> downloadUrl(String file) async {
-    final r = await _get('/files/download', q: {'file': file});
-    return (r as Map)['url'] as String;
-  }
-
-  Future<Map<String, dynamic>> searchFiles(String q,
-      {String directory = '/', int maxDepth = 3, int limit = 50}) async =>
-      Map<String, dynamic>.from(await _get('/files/search', q: {
-        'q': q,
-        'directory': directory,
-        'max_depth': maxDepth,
-        'limit': limit,
-      }));
-
-  Future<void> createFolder(String directory, String name) =>
-      _post('/files/folder', body: {'directory': directory, 'name': name});
-
+  Future<String> downloadUrl(String file) async { final r = await _get('/files/download', q: {'file': file}); return (r as Map)['url'] as String; }
+  Future<Map<String, dynamic>> searchFiles(String q, {String directory = '/', int maxDepth = 3, int limit = 50}) async =>
+      Map<String, dynamic>.from(await _get('/files/search', q: {'q': q, 'directory': directory, 'max_depth': maxDepth, 'limit': limit}));
+  Future<void> createFolder(String directory, String name) => _post('/files/folder', body: {'directory': directory, 'name': name});
   Future<Map<String, dynamic>> filesBatch(String op, List<String> items,
       {String root = '/', String? dest, List<String>? newNames, String? mode}) async {
     final body = <String, dynamic>{'op': op, 'root': root, 'items': items};
@@ -556,211 +393,127 @@ class ApiClient {
     if (mode != null) body['mode'] = mode;
     return Map<String, dynamic>.from(await _post('/files/batch', body: body));
   }
-
-  Future<void> deleteFiles(String root, List<String> items) =>
-      filesBatch('delete', items, root: root);
-
-  Future<void> moveFiles(String root, List<String> items, String dest) =>
-      filesBatch('move', items, root: root, dest: dest);
-
-  Future<void> renameFile(String root, String oldName, String newName) =>
-      filesBatch('rename', [oldName], root: root, newNames: [newName]);
-
-  Future<void> chmodFiles(String root, List<String> items, String mode) =>
-      filesBatch('chmod', items, root: root, mode: mode);
-
-  Future<void> extract(String root, List<String> items) =>
-      filesBatch('extract', items, root: root);
+  Future<void> deleteFiles(String root, List<String> items) => filesBatch('delete', items, root: root);
+  Future<void> moveFiles(String root, List<String> items, String dest) => filesBatch('move', items, root: root, dest: dest);
+  Future<void> renameFile(String root, String oldName, String newName) => filesBatch('rename', [oldName], root: root, newNames: [newName]);
+  Future<void> chmodFiles(String root, List<String> items, String mode) => filesBatch('chmod', items, root: root, mode: mode);
+  Future<void> extract(String root, List<String> items) => filesBatch('extract', items, root: root);
 
   // ═══════════════ BACKUPS ═══════════════
-  Future<Map<String, dynamic>> backups() async =>
-      Map<String, dynamic>.from(await _get('/backups'));
-
-  Future<void> backupCreate(String name) =>
-      _post('/backups', body: {'name': name, 'locked': false});
-
-  Future<void> backupRestore(String uuid, {bool truncate = false}) =>
-      _post('/backups/$uuid/restore', body: {'truncate': truncate});
-
+  Future<Map<String, dynamic>> backups() async => Map<String, dynamic>.from(await _get('/backups'));
+  Future<void> backupCreate(String name) => _post('/backups', body: {'name': name, 'locked': false});
+  Future<void> backupRestore(String uuid, {bool truncate = false}) => _post('/backups/$uuid/restore', body: {'truncate': truncate});
   Future<void> backupDelete(String uuid) => _del('/backups/$uuid');
   Future<void> backupLock(String uuid) => _post('/backups/$uuid/lock');
-
-  Future<String> backupDownloadUrl(String uuid) async {
-    final r = await _get('/backups/$uuid/download');
-    return (r as Map)['url'] as String;
-  }
-
-  Future<Map<String, dynamic>> backupPolicyGet() async =>
-      Map<String, dynamic>.from(await _get('/backups/policy'));
-
-  Future<void> backupPolicySet(bool en, int hours, int keep) =>
-      _put('/backups/policy', body: {
-        'enabled': en,
-        'interval_hours': hours,
-        'keep': keep,
-      });
+  Future<String> backupDownloadUrl(String uuid) async { final r = await _get('/backups/$uuid/download'); return (r as Map)['url'] as String; }
+  Future<Map<String, dynamic>> backupPolicyGet() async => Map<String, dynamic>.from(await _get('/backups/policy'));
+  Future<void> backupPolicySet(bool en, int hours, int keep) => _put('/backups/policy', body: {'enabled': en, 'interval_hours': hours, 'keep': keep});
 
   // ═══════════════ SERVER ═══════════════
-  Future<ServerResources> serverResources() async =>
-      ServerResources.fromJson(
-          Map<String, dynamic>.from(await _get('/server/resources')));
-
+  Future<ServerResources> serverResources() async => ServerResources.fromJson(Map<String, dynamic>.from(await _get('/server/resources')));
   Future<void> power(String s) => _post('/server/power', body: {'signal': s});
-  Future<void> setAutoRestart(bool e) =>
-      _put('/server/auto-restart', body: {'enabled': e});
+  Future<void> setAutoRestart(bool e) => _put('/server/auto-restart', body: {'enabled': e});
 
   // ═══════════════ ANNOUNCEMENTS / NOTIFICATIONS ═══════════════
   Future<List<Announcement>> announcements() async {
     final l = await _get('/announcements') as List;
     return l.map((e) => Announcement.fromJson(e)).toList();
   }
-
   Future<List<NotificationItem>> notifications({bool unread = false, int limit = 50}) async {
-    final l = await _get('/notifications',
-        q: {'unread': unread, 'limit': limit}) as List;
+    final l = await _get('/notifications', q: {'unread': unread, 'limit': limit}) as List;
     return l.map((e) => NotificationItem.fromJson(e)).toList();
   }
-
-  Future<void> notificationsRead([List<int>? ids]) =>
-      _post('/notifications/read', body: {'ids': ids});
-
+  Future<void> notificationsRead([List<int>? ids]) => _post('/notifications/read', body: {'ids': ids});
   Future<void> notificationsClear() => _del('/notifications');
 
   // ═══════════════ ADMIN — STATS & REQUESTS ═══════════════
-  Future<AdminStats> adminStats() async =>
-      AdminStats.fromJson(Map<String, dynamic>.from(await _get('/admin/stats')));
-
+  Future<AdminStats> adminStats() async => AdminStats.fromJson(Map<String, dynamic>.from(await _get('/admin/stats')));
   Future<List<Map<String, dynamic>>> adminRequests({String status = 'pending'}) async {
     final r = await _get('/admin/requests', q: {'status': status});
     return ((r as Map)['requests'] as List).cast<Map<String, dynamic>>();
   }
-
-  Future<void> adminApprove(int uid, {int? days}) =>
-      _post('/admin/requests/$uid/approve',
-          body: {if (days != null) 'days': days});
-
-  Future<void> adminReject(int uid, String reason) =>
-      _post('/admin/requests/$uid/reject', body: {'reason': reason});
+  Future<void> adminApprove(int uid, {int? days}) => _post('/admin/requests/$uid/approve', body: {if (days != null) 'days': days});
+  Future<void> adminReject(int uid, String reason) => _post('/admin/requests/$uid/reject', body: {'reason': reason});
 
   // ═══════════════ ADMIN — USERS ═══════════════
   Future<List<AdminUser>> adminUsers({String search = ''}) async {
     final l = await _get('/admin/users', q: {'search': search}) as List;
     return l.map((e) => AdminUser.fromJson(Map<String, dynamic>.from(e))).toList();
   }
-
-  Future<Map<String, dynamic>> adminUserDetail(int uid) async =>
-      Map<String, dynamic>.from(await _get('/admin/users/$uid'));
-
-  Future<void> adminBan(int uid, String reason) =>
-      _post('/admin/users/$uid/ban',
-          body: {'reason': reason, 'kill_server': true});
-
+  Future<Map<String, dynamic>> adminUserDetail(int uid) async => Map<String, dynamic>.from(await _get('/admin/users/$uid'));
+  Future<void> adminBan(int uid, String reason) => _post('/admin/users/$uid/ban', body: {'reason': reason, 'kill_server': true});
   Future<void> adminUnban(int uid) => _post('/admin/users/$uid/unban');
-  Future<void> adminSetPassword(int uid, String pw) =>
-      _post('/admin/users/$uid/password', body: {'new_password': pw});
-  Future<void> adminSetRole(int uid, String role) =>
-      _post('/admin/users/$uid/role', body: {'role': role});
-  Future<void> adminSetExpiry(int uid, int? days) =>
-      _post('/admin/users/$uid/expiry', body: {'days': days});
-  Future<void> adminDeleteUser(int uid, {bool wipe = true}) =>
-      _del('/admin/users/$uid', q: {'wipe': wipe});
-  Future<void> adminSetNote(int uid, String note) =>
-      _post('/admin/users/$uid/note', body: {'note': note});
-  Future<void> adminMessage(int uid, String text) =>
-      _post('/admin/users/$uid/message', body: {'text': text});
-  Future<void> adminUserAlert(int uid, String text) =>
-      _post('/admin/users/$uid/alert', body: {'text': text});
+  Future<void> adminSetPassword(int uid, String pw) => _post('/admin/users/$uid/password', body: {'new_password': pw});
+  Future<void> adminSetRole(int uid, String role) => _post('/admin/users/$uid/role', body: {'role': role});
+  Future<void> adminSetExpiry(int uid, int? days) => _post('/admin/users/$uid/expiry', body: {'days': days});
+  Future<void> adminDeleteUser(int uid, {bool wipe = true}) => _del('/admin/users/$uid', q: {'wipe': wipe});
+  Future<void> adminSetNote(int uid, String note) => _post('/admin/users/$uid/note', body: {'note': note});
+  Future<void> adminMessage(int uid, String text) => _post('/admin/users/$uid/message', body: {'text': text});
+  Future<void> adminUserAlert(int uid, String text) => _post('/admin/users/$uid/alert', body: {'text': text});
   Future<void> adminForceLogout(int uid) => _post('/admin/users/$uid/logout');
-  Future<void> adminRevokeSessions(int uid) =>
-      _post('/admin/users/$uid/revoke-sessions');
-  Future<void> adminUnlockDevice(int uid) =>
-      _post('/admin/users/$uid/unlock-device');
-  Future<void> adminPower(int uid, String sig) =>
-      _post('/admin/users/$uid/power', body: {'signal': sig});
-  Future<void> adminWipe(int uid) =>
-      _post('/admin/users/$uid/wipe', body: {'confirm': 'WIPE'});
+  Future<void> adminRevokeSessions(int uid) => _post('/admin/users/$uid/revoke-sessions');
+  Future<void> adminUnlockDevice(int uid) => _post('/admin/users/$uid/unlock-device');
+  Future<void> adminPower(int uid, String sig) => _post('/admin/users/$uid/power', body: {'signal': sig});
+  Future<void> adminWipe(int uid) => _post('/admin/users/$uid/wipe', body: {'confirm': 'WIPE'});
 
   // ═══════════════ ADMIN — SESSIONS ═══════════════
   Future<Map<String, dynamic>> adminSessions({bool activeOnly = true, int limit = 200}) async =>
-      Map<String, dynamic>.from(await _get('/admin/sessions',
-          q: {'active_only': activeOnly, 'limit': limit}));
-
-  Future<void> adminRevokeSession(int id) =>
-      _post('/admin/sessions/revoke', body: {'session_id': id});
+      Map<String, dynamic>.from(await _get('/admin/sessions', q: {'active_only': activeOnly, 'limit': limit}));
+  Future<void> adminRevokeSession(int id) => _post('/admin/sessions/revoke', body: {'session_id': id});
 
   // ═══════════════ ADMIN — DEVICES ═══════════════
   Future<Map<String, dynamic>> adminDevices({String search = ''}) async =>
-      Map<String, dynamic>.from(await _get('/admin/device-lock',
-          q: {'search': search}));
-
-  Future<void> adminDeleteDevice(String deviceId) =>
-      _del('/admin/device-lock/$deviceId');
+      Map<String, dynamic>.from(await _get('/admin/device-lock', q: {'search': search}));
+  Future<void> adminDeleteDevice(String deviceId) => _del('/admin/device-lock/$deviceId');
 
   // ═══════════════ ADMIN — MODALS ═══════════════
   Future<Map<String, dynamic>> adminCreateModal(Map<String, dynamic> fields) async =>
       Map<String, dynamic>.from(await _post('/admin/modals', body: fields));
-
   Future<List<Map<String, dynamic>>> adminModals({bool activeOnly = true}) async {
-    final l = await _get('/admin/modals',
-        q: {'active_only': activeOnly}) as List;
+    final l = await _get('/admin/modals', q: {'active_only': activeOnly}) as List;
     return l.cast<Map<String, dynamic>>();
   }
-
   Future<void> adminDeleteModal(int id) => _del('/admin/modals/$id');
 
   // ═══════════════ ADMIN — UPDATES ═══════════════
   Future<Map<String, dynamic>> adminCreateUpdate(Map<String, dynamic> fields) async =>
       Map<String, dynamic>.from(await _post('/admin/update', body: fields));
-
   Future<List<Map<String, dynamic>>> adminUpdates() async {
     final l = await _get('/admin/update') as List;
     return l.cast<Map<String, dynamic>>();
   }
-
   Future<void> adminDeleteUpdate(int id) => _del('/admin/update/$id');
 
   // ═══════════════ ADMIN — BANNERS ═══════════════
   Future<Map<String, dynamic>> adminCreateBanner(Map<String, dynamic> fields) async =>
       Map<String, dynamic>.from(await _post('/admin/banner', body: fields));
-
   Future<List<Map<String, dynamic>>> adminBanners() async {
     final l = await _get('/admin/banner') as List;
     return l.cast<Map<String, dynamic>>();
   }
-
   Future<void> adminDeleteBanner(int id) => _del('/admin/banner/$id');
 
   // ═══════════════ ADMIN — KILL SWITCH ═══════════════
   Future<void> adminKillSwitch(bool enabled, {String reason = ''}) =>
-      _post('/admin/kill-switch',
-          body: {'enabled': enabled, 'reason': reason});
+      _post('/admin/kill-switch', body: {'enabled': enabled, 'reason': reason});
 
   // ═══════════════ ADMIN — SETTINGS ═══════════════
-  Future<Map<String, dynamic>> adminSettings() async =>
-      Map<String, dynamic>.from(await _get('/admin/settings'));
-
-  Future<void> adminSettingsUpdate(Map<String, dynamic> body) =>
-      _post('/admin/settings', body: body);
+  Future<Map<String, dynamic>> adminSettings() async => Map<String, dynamic>.from(await _get('/admin/settings'));
+  Future<void> adminSettingsUpdate(Map<String, dynamic> body) => _post('/admin/settings', body: body);
 
   // ═══════════════ ADMIN — AUDIT & METRICS ═══════════════
   Future<List<Map<String, dynamic>>> adminAudit({int limit = 100}) async {
-    final l = await _get('/admin/audit',
-        q: {'limit': limit, 'action': ''}) as List;
+    final l = await _get('/admin/audit', q: {'limit': limit, 'action': ''}) as List;
     return l.cast<Map<String, dynamic>>();
   }
-
   Future<List<Map<String, dynamic>>> adminMetrics({int hours = 24}) async {
     final l = await _get('/admin/metrics', q: {'hours': hours}) as List;
     return l.cast<Map<String, dynamic>>();
   }
-
-  Future<Map<String, dynamic>> dbBackup() async =>
-      Map<String, dynamic>.from(await _post('/admin/db-backup'));
+  Future<Map<String, dynamic>> dbBackup() async => Map<String, dynamic>.from(await _post('/admin/db-backup'));
 
   // ═══════════════ ADMIN — ANNOUNCEMENTS ═══════════════
-  Future<void> announce(String text) =>
-      _post('/admin/announcements', body: {'text': text});
-
+  Future<void> announce(String text) => _post('/admin/announcements', body: {'text': text});
   Future<List<Map<String, dynamic>>> announcementsAdmin() async {
     final l = await _get('/admin/announcements') as List;
     return l.cast<Map<String, dynamic>>();
@@ -769,9 +522,10 @@ class ApiClient {
   // ═══════════════ WEBSOCKET ═══════════════
   Future<WebSocket> connectEvents() async {
     final ws = baseUrl.replaceFirst('http', 'ws');
-    final url = '$ws/ws/events?token=$_token';
-    return WebSocket.connect(url);
+    return WebSocket.connect('$ws/ws/events?token=$_token');
   }
 
   void dispose() => _http.close();
 }
+DART_EOF
+
