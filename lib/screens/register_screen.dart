@@ -19,11 +19,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _submit() async {
     if (_u.text.trim().length < 3) {
-      setState(() => _err = 'Username must be at least 3 characters');
+      setState(() => _err = "Username must be at least 3 chars");
       return;
     }
     if (_p.text.length < 8) {
-      setState(() => _err = 'Password must be at least 8 characters');
+      setState(() => _err = "Password must be at least 8 chars");
       return;
     }
     setState(() { _busy = true; _err = null; _pending = null; });
@@ -32,22 +32,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     setState(() {
       _busy = false;
-      if (e != null && e.startsWith('PENDING:')) {
-        final parts = e.substring(8).split('|');
-        final msg = parts[0];
-        final reason = parts.length > 1 ? parts[1] : 'admin_required';
-        if (reason == 'ip_rate_limit') {
-          _pending = '⚠️ تم رصد محاولات كثيرة من نفس الشبكة.
-طلبك في انتظار مراجعة الإدارة.';
-        } else if (reason == 'admin_required') {
-          _pending = '✅ تم إنشاء طلبك بنجاح.
-في انتظار موافقة الإدارة.';
+      if (e != null && e.startsWith("PENDING:")) {
+        final parts = e.substring(8).split("|");
+        final reason = parts.length > 1 ? parts[1] : "admin_required";
+        if (reason == "ip_rate_limit") {
+          _pending = "تم رصد محاولات كثيرة من نفس الشبكة. طلبك في انتظار المراجعة.";
+        } else if (reason == "admin_required") {
+          _pending = "تم إنشاء طلبك بنجاح. في انتظار موافقة الإدارة.";
         } else {
-          _pending = msg;
+          _pending = parts[0];
         }
       } else if (e != null) {
         _err = e;
-      }});
+      }
+    });
   }
 
   @override

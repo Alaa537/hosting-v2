@@ -277,7 +277,8 @@ class ApiClient {
   
   Future<Map<String, dynamic>> backups() async => Map<String, dynamic>.from(await _get('/backups'));
   Future<void> backupCreate(String name) => _post('/backups', body: {'name': name});
-  Future<void> backupRestore(String uuid) => _post('/backups/$uuid/restore');
+  Future<void> backupRestore(String uuid, {bool truncate = false}) =>
+      _post('/backups/$uuid/restore', body: {'truncate': truncate});
   Future<void> backupDelete(String uuid) => _del('/backups/$uuid');
   Future<Map<String, dynamic>> backupPolicyGet() async => Map<String, dynamic>.from(await _get('/backups/policy'));
   Future<void> backupPolicySet(bool en, int hours, int keep) => _put('/backups/policy', body: {'enabled': en, 'interval_hours': hours, 'keep': keep});
@@ -298,8 +299,8 @@ class ApiClient {
 
 
   // ====== ADMIN — STATS & REQUESTS ======
-  Future<Map<String, dynamic>> adminStats() async =>
-      Map<String, dynamic>.from(await _get('/admin/stats'));
+  Future<AdminStats> adminStats() async =>
+      AdminStats.fromJson(Map<String, dynamic>.from(await _get('/admin/stats')));
 
   Future<List<Map<String, dynamic>>> adminRequests({String status = 'pending'}) async {
     final r = await _get('/admin/requests', q: {'status': status});
@@ -313,9 +314,9 @@ class ApiClient {
       _post('/admin/requests/\$uid/reject', body: {'reason': reason});
 
   // ====== ADMIN — USERS ======
-  Future<List<Map<String, dynamic>>> adminUsers({String search = ''}) async {
+  Future<List<AdminUser>> adminUsers({String search = ''}) async {
     final l = await _get('/admin/users', q: {'search': search}) as List;
-    return l.cast<Map<String, dynamic>>();
+    return l.map((e) => AdminUser.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<Map<String, dynamic>> adminUserDetail(int uid) async =>
