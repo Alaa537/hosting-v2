@@ -296,5 +296,135 @@ class ApiClient {
     return WebSocket.connect('$ws/ws/events?token=$_token');
   }
 
+
+  // ====== ADMIN — STATS & REQUESTS ======
+  Future<Map<String, dynamic>> adminStats() async =>
+      Map<String, dynamic>.from(await _get('/admin/stats'));
+
+  Future<List<Map<String, dynamic>>> adminRequests({String status = 'pending'}) async {
+    final r = await _get('/admin/requests', q: {'status': status});
+    return ((r as Map)['requests'] as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> adminApprove(int uid, {int? days}) =>
+      _post('/admin/requests/\$uid/approve', body: {if (days != null) 'days': days});
+
+  Future<void> adminReject(int uid, String reason) =>
+      _post('/admin/requests/\$uid/reject', body: {'reason': reason});
+
+  // ====== ADMIN — USERS ======
+  Future<List<Map<String, dynamic>>> adminUsers({String search = ''}) async {
+    final l = await _get('/admin/users', q: {'search': search}) as List;
+    return l.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> adminUserDetail(int uid) async =>
+      Map<String, dynamic>.from(await _get('/admin/users/\$uid'));
+
+  Future<void> adminBan(int uid, String reason) =>
+      _post('/admin/users/\$uid/ban', body: {'reason': reason, 'kill_server': true});
+  Future<void> adminUnban(int uid) => _post('/admin/users/\$uid/unban');
+  Future<void> adminSetPassword(int uid, String pw) =>
+      _post('/admin/users/\$uid/password', body: {'new_password': pw});
+  Future<void> adminSetRole(int uid, String role) =>
+      _post('/admin/users/\$uid/role', body: {'role': role});
+  Future<void> adminSetExpiry(int uid, int? days) =>
+      _post('/admin/users/\$uid/expiry', body: {'days': days});
+  Future<void> adminDeleteUser(int uid, {bool wipe = true}) =>
+      _del('/admin/users/\$uid', q: {'wipe': wipe});
+  Future<void> adminSetNote(int uid, String note) =>
+      _post('/admin/users/\$uid/note', body: {'note': note});
+  Future<void> adminMessage(int uid, String text) =>
+      _post('/admin/users/\$uid/message', body: {'text': text});
+  Future<void> adminUserAlert(int uid, String text) =>
+      _post('/admin/users/\$uid/alert', body: {'text': text});
+  Future<void> adminForceLogout(int uid) => _post('/admin/users/\$uid/logout');
+  Future<void> adminRevokeSessions(int uid) => _post('/admin/users/\$uid/revoke-sessions');
+  Future<void> adminUnlockDevice(int uid) => _post('/admin/users/\$uid/unlock-device');
+  Future<void> adminPower(int uid, String sig) =>
+      _post('/admin/users/\$uid/power', body: {'signal': sig});
+  Future<void> adminWipe(int uid) =>
+      _post('/admin/users/\$uid/wipe', body: {'confirm': 'WIPE'});
+
+  // ====== ADMIN — SESSIONS & DEVICES ======
+  Future<Map<String, dynamic>> adminSessions({bool activeOnly = true, int limit = 200}) async =>
+      Map<String, dynamic>.from(await _get('/admin/sessions',
+          q: {'active_only': activeOnly, 'limit': limit}));
+
+  Future<void> adminRevokeSession(int id) =>
+      _post('/admin/sessions/revoke', body: {'session_id': id});
+
+  Future<Map<String, dynamic>> adminDevices({String search = ''}) async =>
+      Map<String, dynamic>.from(await _get('/admin/device-lock', q: {'search': search}));
+
+  Future<void> adminDeleteDevice(String deviceId) => _del('/admin/device-lock/\$deviceId');
+
+  // ====== ADMIN — MODALS ======
+  Future<Map<String, dynamic>> adminCreateModal(Map<String, dynamic> fields) async =>
+      Map<String, dynamic>.from(await _post('/admin/modals', body: fields));
+
+  Future<List<Map<String, dynamic>>> adminModals({bool activeOnly = true}) async {
+    final l = await _get('/admin/modals', q: {'active_only': activeOnly}) as List;
+    return l.cast<Map<String, dynamic>>();
+  }
+
+  Future<void> adminDeleteModal(int id) => _del('/admin/modals/\$id');
+
+  // ====== ADMIN — UPDATES ======
+  Future<Map<String, dynamic>> adminCreateUpdate(Map<String, dynamic> fields) async =>
+      Map<String, dynamic>.from(await _post('/admin/update', body: fields));
+
+  Future<List<Map<String, dynamic>>> adminUpdates() async {
+    final l = await _get('/admin/update') as List;
+    return l.cast<Map<String, dynamic>>();
+  }
+
+  Future<void> adminDeleteUpdate(int id) => _del('/admin/update/\$id');
+
+  // ====== ADMIN — BANNERS ======
+  Future<Map<String, dynamic>> adminCreateBanner(Map<String, dynamic> fields) async =>
+      Map<String, dynamic>.from(await _post('/admin/banner', body: fields));
+
+  Future<List<Map<String, dynamic>>> adminBanners() async {
+    final l = await _get('/admin/banner') as List;
+    return l.cast<Map<String, dynamic>>();
+  }
+
+  Future<void> adminDeleteBanner(int id) => _del('/admin/banner/\$id');
+
+  // ====== ADMIN — KILL SWITCH ======
+  Future<void> adminKillSwitch(bool enabled, {String reason = ''}) =>
+      _post('/admin/kill-switch', body: {'enabled': enabled, 'reason': reason});
+
+  // ====== ADMIN — SETTINGS ======
+  Future<Map<String, dynamic>> adminSettings() async =>
+      Map<String, dynamic>.from(await _get('/admin/settings'));
+
+  Future<void> adminSettingsUpdate(Map<String, dynamic> body) =>
+      _post('/admin/settings', body: body);
+
+  // ====== ADMIN — AUDIT & METRICS ======
+  Future<List<Map<String, dynamic>>> adminAudit({int limit = 100}) async {
+    final l = await _get('/admin/audit', q: {'limit': limit, 'action': ''}) as List;
+    return l.cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> adminMetrics({int hours = 24}) async {
+    final l = await _get('/admin/metrics', q: {'hours': hours}) as List;
+    return l.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> dbBackup() async =>
+      Map<String, dynamic>.from(await _post('/admin/db-backup'));
+
+  // ====== ADMIN — ANNOUNCEMENTS ======
+  Future<void> announce(String text) =>
+      _post('/admin/announcements', body: {'text': text});
+
+  Future<List<Map<String, dynamic>>> announcementsAdmin() async {
+    final l = await _get('/admin/announcements') as List;
+    return l.cast<Map<String, dynamic>>();
+  }
+
   void dispose() => _http.close();
 }
