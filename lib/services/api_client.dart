@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -126,7 +125,8 @@ class ApiClient {
   }
 
   /// فك تشفير AES-256-GCM (مواصفات السيرفر)
-  Future<Map<String, dynamic>> _decryptAesGcm(String encB64, int ts) async {
+  /// تم تعديلها لترجع dynamic بدلاً من Map لتقبل الـ List
+  Future<dynamic> _decryptAesGcm(String encB64, int ts) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if ((now - ts).abs() > 300) {
       throw HostingException(400, {'error': 'Response expired (replay attack?)'}, '');
@@ -156,7 +156,8 @@ class ApiClient {
 
     try {
       final plaintext = await algorithm.decrypt(secretBox, secretKey: secretKey);
-      return jsonDecode(utf8.decode(plaintext)) as Map<String, dynamic>;
+      // تم إزالة as Map<String, dynamic>
+      return jsonDecode(utf8.decode(plaintext));
     } on crypto_gcm.SecretBoxAuthenticationError {
       throw HostingException(400, {'error': 'Tampered response (AES-GCM auth tag mismatch)'}, '');
     } catch (e) {
@@ -527,5 +528,3 @@ class ApiClient {
 
   void dispose() => _http.close();
 }
-
-
