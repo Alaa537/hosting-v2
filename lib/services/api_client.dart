@@ -272,8 +272,17 @@ class ApiClient {
   Future<Map<String, dynamic>> readFileRaw(String file) async => Map<String, dynamic>.from(await _get('/files/content', q: {'file': file}));
   Future<void> writeFileRaw(String file, String content) => _post('/files/write', body: {'file': file, 'content': content});
   Future<void> deleteFiles(String root, List<String> items) => _post('/files/batch', body: {'op': 'delete', 'root': root, 'items': items});
-  Future<Map<String, dynamic>> searchFiles(String q, {String directory = '/'}) async => Map<String, dynamic>.from(await _get('/files/search', q: {'q': q, 'directory': directory}));
-  Future<Map<String, dynamic>> filesBatch(String op, List<String> items, {String root = '/', String? dest}) async => Map<String, dynamic>.from(await _post('/files/batch', body: {'op': op, 'root': root, 'items': items, if (dest != null) 'destination': dest}));
+  Future<Map<String, dynamic>> searchFiles(String q,
+      {String directory = '/', int maxDepth = 3, int limit = 50}) async =>
+    Map<String, dynamic>.from(await _get('/files/search', q: {
+      'q': q, 'directory': directory,
+      'max_depth': maxDepth, 'limit': limit,
+    }));
+    if (dest != null) body['destination'] = dest;
+    if (newNames != null) body['new_names'] = newNames;
+    if (mode != null) body['mode'] = mode;
+    return Map<String, dynamic>.from(await _post('/files/batch', body: body));
+  }) async => Map<String, dynamic>.from(await _post('/files/batch', body: {'op': op, 'root': root, 'items': items, if (dest != null) 'destination': dest}));
   
   Future<Map<String, dynamic>> backups() async => Map<String, dynamic>.from(await _get('/backups'));
   Future<void> backupCreate(String name) => _post('/backups', body: {'name': name});
@@ -467,6 +476,15 @@ class ApiClient {
 
   Future<Map<String, dynamic>> botLogs(String f, {int lines = 200}) async =>
       Map<String, dynamic>.from(await _get('/bots/\$f/logs', q: {'lines': lines}));
+
+  Future<Map<String, dynamic>> filesBatch(String op, List<String> items,
+      {String root = '/', String? dest, List<String>? newNames, String? mode}) async {
+    final body = <String, dynamic>{'op': op, 'root': root, 'items': items};
+    if (dest != null) body['destination'] = dest;
+    if (newNames != null) body['new_names'] = newNames;
+    if (mode != null) body['mode'] = mode;
+    return Map<String, dynamic>.from(await _post('/files/batch', body: body));
+  }
 
   void dispose() => _http.close();
 }
