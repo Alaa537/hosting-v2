@@ -24,7 +24,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> bootstrap() async {
     baseUrl = await Store.readBase();
     deviceId = await DeviceInfo.deviceId();
-    appVersion = await Store.readAppVersion();
+    appVersion = await Store.readAppVersionCode();
 
     final token = await Store.readToken();
     final refresh = await Store.readRefresh();
@@ -142,14 +142,20 @@ class AuthProvider extends ChangeNotifier {
   Future<String?> register(String u, String p, String invite) async {
     try {
       final model = await DeviceInfo.modelName();
-      final r = await api!.register(u, p, invite, modelName: model);
+      final r = await api!.register(u, p, invite);
+
+      if (r['status'] == 'pending') {
+        final reason = r['reason'] ?? 'admin_required';
+        final msg = r['message'] ?? 'طلبك قيد المراجعة من قبل الإدارة.';
+        return 'PENDING:$msg|$reason';
+      }
 
       if (r['token'] != null) {
         await Store.saveTokens(api!.token, api!.refreshToken);
         await Store.saveUsernameHint(u);
         user = await api!.me();
         state = AuthState.loggedIn;
-        deviceWarning = null;
+        deviceWarning = r['migrated'] == true ? 'تم نقل الجهاز بنجاح' : null;
         notifyListeners();
         await DeviceInfo.lockDeviceTo(u);
         _ensureDeviceLockInBackground();

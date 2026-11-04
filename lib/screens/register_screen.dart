@@ -32,9 +32,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     setState(() {
       _busy = false;
-      if (e != null && e.startsWith('PENDING:')) _pending = e.substring(8);
-      else _err = e;
-    });
+      if (e != null && e.startsWith('PENDING:')) {
+        final parts = e.substring(8).split('|');
+        final msg = parts[0];
+        final reason = parts.length > 1 ? parts[1] : 'admin_required';
+        if (reason == 'ip_rate_limit') {
+          _pending = '⚠️ تم رصد محاولات كثيرة من نفس الشبكة.
+طلبك في انتظار مراجعة الإدارة.';
+        } else if (reason == 'admin_required') {
+          _pending = '✅ تم إنشاء طلبك بنجاح.
+في انتظار موافقة الإدارة.';
+        } else {
+          _pending = msg;
+        }
+      } else if (e != null) {
+        _err = e;
+      }});
   }
 
   @override

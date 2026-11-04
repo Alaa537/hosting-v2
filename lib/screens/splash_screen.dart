@@ -14,6 +14,8 @@ import '../widgets/update_dialog.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
 import 'kill_switch_screen.dart';
+import 'blocked_screen.dart';
+import 'update_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -101,9 +103,9 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_blocked != null) {
-      return SecurityBlockScreen(result: _blocked!);
-    }
+    if (_blocked != null) return SecurityBlockScreen(result: _blocked!);
+    if (_isVersionBlocked) return BlockedScreen(message: _versionMessage ?? 'تم إيقاف هذه النسخة.');
+    if (_isForceUpdate) return ForceUpdateScreen(url: _updateUrl, message: _versionMessage);
 
     return Consumer<AuthProvider>(builder: (_, auth, __) {
       if (auth.state == AuthState.blocked) {

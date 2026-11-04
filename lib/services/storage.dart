@@ -1,3 +1,4 @@
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/constants.dart';
@@ -64,6 +65,15 @@ class Store {
       await p.remove(_kUsername);
     } else {
       await p.setString(_kUsername, u);
+    }
+  }
+
+  static Future<int> readAppVersionCode() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      return int.tryParse(info.buildNumber) ?? 1;
+    } catch (_) {
+      return 1;
     }
   }
 

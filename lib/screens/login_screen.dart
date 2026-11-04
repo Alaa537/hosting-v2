@@ -50,7 +50,24 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _busy = false);
     if (e != null) {
       // ← عرض الرسالة الفعلية من AuthProvider
-      _showError('فشل تسجيل الدخول', e);
+      String msg = e ?? 'خطأ غير معروف';
+      if (msg.contains('device_blocked') || msg.contains('blocked')) {
+        msg = '🚫 تم حظر هذا الجهاز من قبل الإدارة.
+تواصل مع الدعم لفك الحظر.';
+      } else if (msg.contains('device already linked') || msg.contains('linked to another')) {
+        msg = '⚠️ هذا الجهاز مسجل بحساب آخر.
+لا يمكن استخدام حساب مختلف من نفس الجهاز.';
+      } else if (msg.contains('account is locked') || msg.contains('locked to another device')) {
+        msg = '🔒 هذا الحساب مربوط بجهاز آخر.
+اطلب من الإدارة فك القفل، أو استخدم جهازك الأصلي.';
+      } else if (msg.contains('invalid_signature')) {
+        msg = '⚠️ التطبيق معدّل.
+حمّل النسخة الأصلية من القناة الرسمية.';
+      } else if (msg.contains('missing_headers')) {
+        msg = '⚠️ التطبيق قديم جداً.
+حمّل أحدث نسخة.';
+      }
+      _showError('فشل تسجيل الدخول', msg);
     }
   }
 
