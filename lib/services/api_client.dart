@@ -125,39 +125,61 @@ class ApiClient {
   }
 
 
-  /// يفك تشفير AES-256-GCM من {enc, ts}
+
+  /// يفك تشفير AES-256-GCM (مواصفات السيرفر الرسمية)
+  /// المدخل: {enc: base64(nonce(12) || ciphertext || tag(16)), ts: unix_seconds}
   Future<Map<String, dynamic>> _decryptAesGcm(String encB64, int ts) async {
-    // المفتاح المشتق: SHA-256(APP_SECRET) → 32 بايت
-    final keyBytes = sha256.convert(utf8.encode(_appSecret)).bytes;
-    final secretKey = crypto_gcm.SecretKey(keyBytes);
-
-    // فك Base64
-    final encData = base64Decode(encB64);
-
-    // هيكل: nonce(12) || ciphertext || tag(16)
-    if (encData.length < 12 + 16) {
-      throw HostingException(400,
-          {'error': 'Invalid encrypted payload length'}, '');
+    // ① فحص الـ timestamp (5 دقائق tolerance)
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if ((now - ts).abs() > 300) {
+      throw HostingException(400, {
+        'error': 'Response expired (replay attack?)',
+        'diff_seconds': (now - ts).abs(),
+      }, '');
     }
 
-    final nonce = encData.sublist(0, 12);
-    final tagStart = encData.length - 16;
-    final ciphertext = encData.sublist(12, tagStart);
-    final tag = encData.sublist(tagStart);
+    // ② اشتق المفتاح: SHA-256(APP_SECRET) → 32 بايت
+    if (_appSecret.isEmpty) {
+      throw HostingException(500, {'error': 'APP_SECRET not configured'}, '');
+    }
+    final keyBytes = sha256.convert(utf8.encode(_appSecret)).bytes;
+    final secretKey = gcm.SecretKey(keyBytes);
 
-    final algorithm = crypto_gcm.AesGcm.with256bits();
-    final secretBox = crypto_gcm.SecretBox(
+    // ③ فك base64
+    List<int> raw;
+    try {
+      raw = base64Decode(encB64);
+    } catch (_) {
+      throw HostingException(400, {'error': 'Invalid base64 in enc'}, '');
+    }
+
+    // ④ فحص الحد الأدنى: 12 (nonce) + 16 (tag) = 28
+    if (raw.length < 28) {
+      throw HostingException(400, {'error': 'Encrypted payload too short'}, '');
+    }
+
+    // ⑤ استخراج الأجزاء
+    final nonce = raw.sublist(0, 12);
+    final tag = raw.sublist(raw.length - 16);
+    final ciphertext = raw.sublist(12, raw.length - 16);
+
+    // ⑥ فك التشفير (AES-GCM يتحقق من الـ tag تلقائياً)
+    final algorithm = gcm.AesGcm.with256bits();
+    final secretBox = gcm.SecretBox(
       ciphertext,
       nonce: nonce,
-      mac: crypto_gcm.Mac(tag),
+      mac: gcm.Mac(tag),
     );
 
     try {
       final plaintext = await algorithm.decrypt(secretBox, secretKey: secretKey);
-      return jsonDecode(utf8.decode(plaintext)) as Map<String, dynamic>;
-    } on crypto_gcm.SecretBoxAuthenticationError {
+      final jsonStr = utf8.decode(plaintext);
+      return jsonDecode(jsonStr) as Map<String, dynamic>;
+    } on gcm.SecretBoxAuthenticationError {
       throw HostingException(400,
-          {'error': 'Tampered response (AES-GCM auth failed)'}, '');
+          {'error': 'Tampered response (AES-GCM auth tag mismatch)'}, '');
+    } catch (e) {
+      throw HostingException(400, {'error': 'Decryption failed: $e'}, '');
     }
   }
 
@@ -191,19 +213,29 @@ class ApiClient {
     try { parsed = jsonDecode(r.body); } catch (_) { return r.body; }
 
     // ① الشكل الجديد: AES-GCM مشفر
-    if (parsed is Map && parsed.containsKey('enc') && parsed.containsKey('ts')) {
-      final enc = parsed['enc'] as String;
-      final ts = parsed['ts'] as int;
-      return await _decryptAesGcm(enc, ts);
+    // ① الشكل الجديد: AES-256-GCM مشفر
+    if (parsed is Map &&
+        parsed.containsKey('enc') &&
+        parsed.containsKey('ts')) {
+      return await _decryptAesGcm(
+        parsed['enc'] as String,
+        parsed['ts'] as int,
+      );
     }
 
-    // ② الشكل القديم: HMAC موقّع (احتياطي)
-    if (parsed is Map && parsed.containsKey('sig') &&
-        parsed.containsKey('ts') && parsed.containsKey('data')) {
+    // ② الشكل القديم: HMAC موقّع (احتياطي — معطّل حالياً)
+    if (parsed is Map &&
+        parsed.containsKey('sig') &&
+        parsed.containsKey('ts') &&
+        parsed.containsKey('data')) {
+      final ts = parsed['ts'] as int;
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if ((now - ts).abs() > 300) {
+        throw HostingException(400, {'error': 'Response expired'}, '');
+      }
+
       final data = parsed['data'];
       final sig = parsed['sig'] as String;
-      final ts = parsed['ts'];
-
       final canonical = jsonEncode(_sortKeysRecursive(data));
       final msg = utf8.encode(canonical + ts.toString());
       final hmac = Hmac(sha256, utf8.encode(_appSecret));
@@ -216,6 +248,7 @@ class ApiClient {
       return data;
     }
 
+    // ③ JSON عادي (endpoints مستثناة)
     return parsed;
   }
 
