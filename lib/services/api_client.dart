@@ -427,5 +427,46 @@ class ApiClient {
     return l.cast<Map<String, dynamic>>();
   }
 
+
+  Future<String> downloadUrl(String file) async {
+    final r = await _get('/files/download', q: {'file': file});
+    return (r as Map)['url'] as String;
+  }
+
+
+  Future<void> moveFiles(String root, List<String> items, String dest) =>
+      filesBatch('move', items, root: root, dest: dest);
+
+
+  Future<void> renameFile(String root, String oldName, String newName) =>
+      filesBatch('rename', [oldName], root: root, newNames: [newName]);
+
+
+  Future<void> chmodFiles(String root, List<String> items, String mode) =>
+      filesBatch('chmod', items, root: root, mode: mode);
+
+
+  Future<void> extract(String root, List<String> items) =>
+      filesBatch('extract', items, root: root);
+
+
+  Future<void> createFolder(String directory, String name) =>
+      _post('/files/folder', body: {'directory': directory, 'name': name});
+
+
+  Future<Map<String, dynamic>> uploadFile(File local, {String directory = '/'}) async {
+    final req = http.MultipartRequest('POST', _u('/files/upload', {'directory': directory}));
+    req.headers.addAll(_headers);
+    req.files.add(await http.MultipartFile.fromPath('f', local.path,
+        filename: local.uri.pathSegments.last));
+    final streamed = await req.send();
+    final r = await http.Response.fromStream(streamed);
+    return Map<String, dynamic>.from(await _decode(r) ?? {});
+  }
+
+
+  Future<Map<String, dynamic>> botLogs(String f, {int lines = 200}) async =>
+      Map<String, dynamic>.from(await _get('/bots/\$f/logs', q: {'lines': lines}));
+
   void dispose() => _http.close();
 }
