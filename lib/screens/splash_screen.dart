@@ -69,6 +69,34 @@ class _SplashScreenState extends State<SplashScreen>
       final r = await SecurityService.verify();
       if (!r.isOk) {
         if (mounted) setState(() => _blocked = r);
+        return;
+      }
+
+      // فحص الإصدار من السيرفر
+      try {
+        final api = context.read<AuthProvider>().api;
+        if (api != null) {
+          final versionRes = await api.checkVersion();
+          if (!mounted) return;
+          if (versionRes['status'] == 'blocked') {
+            setState(() {
+              _isVersionBlocked = true;
+              _versionMessage = versionRes['message']?.toString() ?? 'تم إيقاف هذه النسخة.';
+            });
+            return;
+          }
+          if (versionRes['status'] == 'outdated' && versionRes['is_mandatory'] == true) {
+            setState(() {
+              _isForceUpdate = true;
+              _versionMessage = versionRes['message']?.toString() ?? 'يجب تحديث التطبيق.';
+              _updateUrl = versionRes['update_url']?.toString();
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        // نتجاهل خطأ فحص الإصدار - التطبيق يكمل
+        debugPrint('checkVersion failed: $e');
       }
     } catch (e) {
       if (mounted) setState(() => _blocked = SecurityResult.error(e.toString()));
