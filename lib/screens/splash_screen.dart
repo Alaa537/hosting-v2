@@ -300,7 +300,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _blob({required double cx, required double cy, required double radius, required Color color}) {
+  Widget _blob(double cx, double cy, double radius, Color color) {
     return Positioned(
       left: cx - radius, top: cy - radius,
       child: Container(

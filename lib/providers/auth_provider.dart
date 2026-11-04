@@ -13,7 +13,7 @@ class AuthProvider extends ChangeNotifier {
   User? user;
   String baseUrl = '';
   String deviceId = '';
-  String appVersion = '1.0.0';
+  int appVersion = 1;
   Bootstrap? bootstrap_;
   String? blockedReason;
   String? deviceWarning;
@@ -83,8 +83,8 @@ class AuthProvider extends ChangeNotifier {
   // =========================================================
   Future<String?> login(String u, String p) async {
     try {
-      final model = await DeviceInfo.modelName();
-      final r = await api!.login(u, p, modelName: model);
+      
+      final r = await api!.login(u, p);
 
       await Store.saveTokens(api!.token, api!.refreshToken);
       await Store.saveUsernameHint(u);
@@ -141,7 +141,7 @@ class AuthProvider extends ChangeNotifier {
   // =========================================================
   Future<String?> register(String u, String p, String invite) async {
     try {
-      final model = await DeviceInfo.modelName();
+      
       final r = await api!.register(u, p, invite);
 
       if (r['status'] == 'pending') {
